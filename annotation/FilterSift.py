@@ -160,7 +160,7 @@ class FilterSift(FilterCommon):
         mask = np.zeros_like(image[:,:,0], dtype=np.uint8)
         for k in kp:
             center = (int(k.pt[0]), int(k.pt[1]))
-            radius = self.dilate
+            radius = int(self.dilate)  # Ensure radius is an integer
             color = 255 # binary mask, white
             thickness = -1 # filled circle
 
