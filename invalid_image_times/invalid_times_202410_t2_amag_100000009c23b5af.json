@@ -1,0 +1,33 @@
+{
+    "tank_sheet_name": "OCT24 T2 Amag",
+    "cslics_uuid": "100000009c23b5af",
+    "invalid_ranges": [
+        {
+            "start": "2024-10-23_20-00-06_clean.jpg",
+            "end": "2024-10-24_11-49-47_clean.jpg"
+        },
+        {
+            "start": "2024-10-25_00-16-25_clean.jpg",
+            "end": "2024-10-25_08-00-36_clean.jpg"
+        },
+        {
+            "start": "2024-10-25_23-33-18_clean.jpg",
+            "end": "2024-10-26_14-34-59_clean.jpg"
+        },
+        {
+            "start": "2024-10-26_15-37-19_clean.jpg",
+            "end": "2024-10-26_16-04-59_clean.jpg"
+        },
+        {
+            "start": "2024-10-26_16-24-09_clean.jpg",
+            "end": "2024-10-26_16-55-49_clean.jpg"
+        },
+        {
+            "start": "2024-10-26_17-59-59_clean.jpg",
+            "end": "2024-10-27_10-20-02_clean.jpg"
+        }
+        
+    ],
+    
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

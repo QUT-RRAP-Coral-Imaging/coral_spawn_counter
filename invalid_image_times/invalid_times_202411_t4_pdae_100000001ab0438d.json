@@ -1,0 +1,7 @@
+{
+    "tank_sheet_name": "NOV24 T4 Pdae",
+    "cslics_uuid": "100000001ab0438d",
+    "invalid_ranges": [
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

@@ -1,0 +1,15 @@
+{
+    "tank_sheet_name": "OCT24 T3 Amag",
+    "cslics_uuid": "10000000f620da42",
+    "invalid_ranges": [
+        {
+            "start": "2024-10-23_20-00-19_clean.jpg",
+            "end": "2024-10-24_11-47-25_clean.jpg"
+        },
+        {
+            "start": "2024-10-25_22-18-37_clean.jpg",
+            "end": "2024-10-26_15-19-54_clean.jpg"
+        }
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

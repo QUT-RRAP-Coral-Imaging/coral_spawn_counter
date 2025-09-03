@@ -1,0 +1,27 @@
+{
+    "tank_sheet_name": "NOV24 T1 Amil",
+    "cslics_uuid": "100000000029da9b",
+    "invalid_ranges": [
+        {
+            "start": "2024-11-22_23-00-10_clean.jpg",
+            "end": "2024-11-23_01-38-53_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_10-23-20_clean.jpg",
+            "end": "2024-11-24_11-55-40_clean.jpg"
+        },
+        {
+            "start": "2024-11-25_18-24-51_clean.jpg",
+            "end": "2024-11-25_18-41-27_clean.jpg"
+        },
+        {
+            "start": "2024-11-25_19-34-59_clean.jpg",
+            "end": "2024-11-25_20-13-41_clean.jpg"
+        },
+        {
+            "start": "2024-11-27_12-55-55_clean.jpg",
+            "end": "2024-11-27_16-08-51_clean.jpg"
+        }        
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

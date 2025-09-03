@@ -1,0 +1,19 @@
+{
+    "tank_sheet_name": "NOV24 T3 Amil",
+    "cslics_uuid": "10000000f620da42",
+    "invalid_ranges": [
+        {
+            "start": "2024-11-23_21-53-41_clean.jpg",
+            "end": "2024-11-24_11-14-29_clean.jpg"
+        },
+        {
+            "start": "2024-11-25_00-06-16_clean.jpg",
+            "end": "2024-11-25_08-01-01_clean.jpg"
+        },
+        {
+            "start": "2024-11-26_18-38-39_clean.jpg",
+            "end": "2024-11-27_08-04-43_clean.jpg"
+        }
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

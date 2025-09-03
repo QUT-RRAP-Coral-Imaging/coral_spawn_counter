@@ -1,0 +1,57 @@
+{
+    "tank_sheet_name": "NOV24 T6 Lcor",
+    "cslics_uuid": "10000000570f9d9c",
+    "invalid_ranges": [
+        {
+            "start": "2024-11-20_20-47-05_clean.jpg",
+            "end": "2024-11-20_21-18-55_clean.jpg"
+        },
+        {
+            "start": "2024-11-20_23-52-45_clean.jpg",
+            "end": "2024-11-22_09-46-16_clean.jpg"
+        },
+        {
+            "start": "2024-11-22_13-46-52_clean.jpg",
+            "end": "2024-11-24_11-46-03_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_13-01-26_clean.jpg",
+            "end": "2024-11-24_13-50-13_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_15-20-31_clean.jpg",
+            "end": "2024-11-24_15-37-27_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_15-39-13_clean.jpg",
+            "end": "2024-11-24_17-50-23_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_18-09-37_clean.jpg",
+            "end": "2024-11-24_18-53-08_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_19-58-47_clean.jpg",
+            "end": "2024-11-24_20-53-38_clean.jpg"
+        },
+        {
+            "start": "2024-11-24_22-23-24_clean.jpg",
+            "end": "2024-11-24_23-34-26_clean.jpg"
+        },
+        {
+            "start": "2024-11-25_00-07-06_clean.jpg",
+            "end": "2024-11-25_08-10-18_clean.jpg"
+        },
+        {
+            "start": "2024-11-26_18-38-35_clean.jpg",
+            "end": "2024-11-27_08-05-17_clean.jpg"
+        },
+        {
+            "start": "2024-11-27_15-51-48_clean.jpg",
+            "end": "2024-11-27_17-03-08_clean.jpg"
+        }
+        
+        
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

@@ -1,0 +1,7 @@
+{
+    "tank_sheet_name": "OCT24 T6 Aant",
+    "cslics_uuid": "10000000570f9d9c",
+    "invalid_ranges": [
+    ],
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

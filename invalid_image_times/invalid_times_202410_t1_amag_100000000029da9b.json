@@ -1,0 +1,8 @@
+{
+    "tank_sheet_name": "OCT24 T1 Amag",
+    "cslics_uuid": "100000000029da9b",
+    "invalid_ranges": [        
+    ],
+    
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}
