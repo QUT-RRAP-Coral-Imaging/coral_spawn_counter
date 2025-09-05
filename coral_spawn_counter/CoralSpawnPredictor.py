@@ -21,6 +21,7 @@ class CoralSpawnPredictor:
         img_dir, 
         save_dir, 
         submersion_time,  # Format: "YYYY-MM-DD_HH-MM-SS"
+        cslics_uuid,      # Unique identifier for the run
         mode="both",      # "surface", "subsurface", or "both"
         iou_thresh=0.3, 
         conf_thresh=0.25, 
@@ -29,7 +30,8 @@ class CoralSpawnPredictor:
         save_txt=True,
         save_txt_bb=False,
         max_images=None,
-        verbose=False     # Add this parameter to control verbosity
+        verbose=False,    # Control verbosity
+        parallel=False    # Control parallel processing
     ):
         """
         Initialize the coral spawn predictor with two models: one for surface and one for subsurface.
@@ -40,6 +42,7 @@ class CoralSpawnPredictor:
             img_dir: Directory containing input images
             save_dir: Base directory to save detection results
             submersion_time: Time string in format "YYYY-MM-DD_HH-MM-SS" dividing surface/subsurface
+            cslics_uuid: Unique identifier for organizing output files
             mode: Which images to process - "surface", "subsurface", or "both" (default)
             iou_thresh: IoU threshold for non-maximum suppression
             conf_thresh: Confidence threshold for detections
@@ -48,6 +51,8 @@ class CoralSpawnPredictor:
             save_txt: Whether to save detection results as text/json
             save_txt_bb: Whether to save detection results as bounding box text format
             max_images: Maximum number of images to process
+            verbose: Whether to show detailed output from models
+            parallel: Whether to use parallel processing
         """
         # Validate processing mode
         valid_modes = ["surface", "subsurface", "both"]
@@ -55,20 +60,21 @@ class CoralSpawnPredictor:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
         
         self.mode = mode
+        self.cslics_uuid = cslics_uuid  # Store UUID for organizing outputs
         
         self.verbose = verbose  # Store verbosity setting
+        self.parallel = parallel  # Store parallel processing setting
         
-        # Model paths
+        # Model paths and model IDs (stem names)
         self.surface_weights_path = surface_weights_path
+        self.surface_model_id = Path(surface_weights_path).stem
+        
         self.subsurface_weights_path = subsurface_weights_path
+        self.subsurface_model_id = Path(subsurface_weights_path).stem
         
         # Directory paths
         self.img_dir = img_dir
-        self.save_dir = save_dir
-        
-        # Create separate directories for surface and subsurface detections
-        self.surface_save_dir = os.path.join(save_dir, 'detections_surface')
-        self.subsurface_save_dir = os.path.join(save_dir, 'detections_subsurface')
+        self.save_dir = save_dir        
         
         # Submersion time as a dividing point
         self.submersion_time = submersion_time
@@ -86,6 +92,7 @@ class CoralSpawnPredictor:
 
         # Initialize models and load class information
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        
         
         # Only load needed models based on mode
         if self.mode in ["surface", "both"]:
@@ -105,14 +112,17 @@ class CoralSpawnPredictor:
             print(f'Subsurface model classes: {self.subsurface_classes}')
         else:
             self.subsurface_model = None
-
-        
         
         # Prepare output directories
         self._prepare_output_directories()
 
     def _prepare_output_directories(self):
         """Create output directories for both models."""
+        
+        # Create separate directories for surface and subsurface detections using UUID and model ID
+        self.surface_save_dir = os.path.join(self.save_dir,  self.cslics_uuid, 'detections_surface', self.surface_model_id)
+        self.subsurface_save_dir = os.path.join(self.save_dir, self.cslics_uuid, 'detections_subsurface', self.subsurface_model_id)
+
         # Surface directories
         self.surface_imgsave_dir = os.path.join(self.surface_save_dir, 'detections_images')
         self.surface_txtsave_dir = os.path.join(self.surface_save_dir, 'detections_txt')
@@ -124,6 +134,10 @@ class CoralSpawnPredictor:
         self.subsurface_txtsave_dir = os.path.join(self.subsurface_save_dir, 'detections_txt')
         os.makedirs(self.subsurface_imgsave_dir, exist_ok=True)
         os.makedirs(self.subsurface_txtsave_dir, exist_ok=True)
+        
+        # Print output directories
+        print(f"Surface detection outputs will be saved to: {self.surface_save_dir}")
+        print(f"Subsurface detection outputs will be saved to: {self.subsurface_save_dir}")
 
     def is_surface_image(self, img_path):
         """
@@ -326,6 +340,7 @@ class CoralSpawnPredictor:
         """
         print(f'Fetching image list in all subfolders from: {self.img_dir}')
         print(f'Processing mode: {self.mode}')
+        print(f'Parallel processing: {"Enabled" if self.parallel else "Disabled"}')
         img_list = sorted(Path(self.img_dir).rglob('cslics*_img.jpg'))
         
         # Apply max_images limit if specified
@@ -347,16 +362,19 @@ class CoralSpawnPredictor:
         results = []
         start_time = time.time()
         
+        # Select processing method based on parallel setting
+        process_method = self._process_images_parallel if self.parallel else self._process_images_with_progress
+        
         # Process surface images if needed
         if self.mode in ["surface", "both"] and surface_img_list:
             print("\nProcessing surface images:")
-            surface_results = self._process_images_with_progress(surface_img_list, "Surface images")
+            surface_results = process_method(surface_img_list, "Surface images")
             results.extend(surface_results)
         
         # Process subsurface images if needed
         if self.mode in ["subsurface", "both"] and subsurface_img_list:
             print("\nProcessing subsurface images:")
-            subsurface_results = self._process_images_with_progress(subsurface_img_list, "Subsurface images")
+            subsurface_results = process_method(subsurface_img_list, "Subsurface images")
             results.extend(subsurface_results)
         
         end_time = time.time()
@@ -414,6 +432,256 @@ class CoralSpawnPredictor:
             print()  # Add a newline after progress updates
         
         return results
+
+    def _process_images_parallel(self, img_list, desc):
+        """
+        Process a list of images in parallel with a progress bar.
+        
+        Args:
+            img_list: List of image paths to process
+            desc: Description for the progress bar
+            
+        Returns:
+            list: List of (detection_count, model_type) tuples
+        """
+        results = []
+        total = len(img_list)
+        
+        # Use GPU batching if CUDA is available
+        if torch.cuda.is_available():
+            print("GPU detected: Using batch processing for parallel GPU inference")
+            return self._process_images_parallel_gpu(img_list, desc)
+        else:
+            # For CPU-only, we can use multiple workers
+            max_workers = os.cpu_count()
+            print(f"Using {max_workers} parallel workers (CPU-only mode)")
+            
+            # Multi-worker mode (CPU-only)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Process with separate model instances per thread
+                def process_with_new_model(img_path):
+                    is_surface = self.is_surface_image(img_path)
+                    
+                    # Skip processing based on mode
+                    if (is_surface and self.mode == "subsurface") or (not is_surface and self.mode == "surface"):
+                        return 0, "skipped"
+                    
+                    # Create a fresh model instance to avoid thread conflicts
+                    if is_surface:
+                        model = YOLO(self.surface_weights_path, verbose=self.verbose).to('cpu')
+                        classes = self.surface_classes
+                        class_colours = self.surface_class_colours
+                        imgsave_dir = self.surface_imgsave_dir
+                        txtsave_dir = self.surface_txtsave_dir
+                        model_path = self.surface_weights_path
+                        model_type = "surface"
+                    else:
+                        model = YOLO(self.subsurface_weights_path, verbose=self.verbose).to('cpu')
+                        classes = self.subsurface_classes
+                        class_colours = self.subsurface_class_colours
+                        imgsave_dir = self.subsurface_imgsave_dir
+                        txtsave_dir = self.subsurface_txtsave_dir
+                        model_path = self.subsurface_weights_path
+                        model_type = "subsurface"
+                    
+                    # Run inference with thread-local model
+                    results = model.predict(
+                        source=img_path, 
+                        iou=self.iou_thresh, 
+                        conf=self.conf_thresh, 
+                        agnostic_nms=True, 
+                        max_det=self.max_det,
+                        verbose=self.verbose
+                    )
+                    
+                    # Process results and save outputs (similar to process_image)
+                    boxes = results[0].boxes
+                    pred = []
+                    for b in boxes:
+                        xyxyn = b.xyxyn[0] if torch.cuda.is_available() else b.xyxyn
+                        pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
+                    predictions = torch.tensor(pred)
+
+                    # Save outputs (same as in process_image)
+                    rel_path = os.path.relpath(os.path.dirname(img_path), self.img_dir)
+                    
+                    # Save image predictions
+                    if self.save_img:
+                        os.makedirs(os.path.join(imgsave_dir, rel_path), exist_ok=True)
+                        self.save_image_predictions_bb(predictions, img_path, os.path.join(imgsave_dir, rel_path), classes, class_colours)
+
+                    # Save text and JSON predictions
+                    if self.save_txt:
+                        os.makedirs(os.path.join(txtsave_dir, rel_path), exist_ok=True)
+                        self.save_txt_predictions_bb(predictions, img_path, os.path.join(txtsave_dir, rel_path))
+                        self.save_json_predictions_bb(predictions, img_path, os.path.join(txtsave_dir, rel_path), model_path, classes)
+                    
+                    return len(pred), model_type
+                
+                # Submit all tasks
+                futures = [executor.submit(process_with_new_model, img) for img in img_list]
+                
+                # Process results as they complete with a progress bar
+                try:
+                    for future in tqdm(futures, desc=desc, unit="img", total=len(futures)):
+                        result = future.result()
+                        results.append(result)
+                except ImportError:
+                    # Fallback if tqdm is not installed
+                    completed = 0
+                    for future in futures:
+                        result = future.result()
+                        results.append(result)
+                        completed += 1
+                        if completed % 10 == 0 or completed == total:
+                            progress = completed / total * 100
+                            print(f"{desc}: {progress:.1f}% ({completed}/{total})", end="\r")
+                    print()  # Add a newline after progress updates
+            
+            return results
+
+    def _process_images_parallel_gpu(self, img_list, desc):
+        """
+        Process a list of images in parallel using GPU batching.
+        
+        Args:
+            img_list: List of image paths to process
+            desc: Description for the progress bar
+            
+        Returns:
+            list: List of (detection_count, model_type) tuples
+        """
+        results = []
+        
+        # Group images by type (surface/subsurface)
+        surface_images = []
+        subsurface_images = []
+        
+        for img_path in img_list:
+            is_surface = self.is_surface_image(img_path)
+            if is_surface and self.mode in ["surface", "both"]:
+                surface_images.append(img_path)
+            elif not is_surface and self.mode in ["subsurface", "both"]:
+                subsurface_images.append(img_path)
+        
+        # Process surface images in batches
+        if surface_images:
+            print(f"Processing {len(surface_images)} surface images with GPU batching")
+            batch_size = 8  # You can adjust this based on your GPU memory
+            
+            for i in tqdm(range(0, len(surface_images), batch_size), desc=f"{desc} (surface)", unit="batch"):
+                batch = surface_images[i:i+batch_size]
+                
+                # Run prediction on batch
+                batch_results = self.surface_model.predict(
+                    source=batch, 
+                    iou=self.iou_thresh, 
+                    conf=self.conf_thresh, 
+                    agnostic_nms=True, 
+                    max_det=self.max_det,
+                    verbose=self.verbose
+                )
+                
+                # Process each result in the batch
+                for idx, r in enumerate(batch_results):
+                    img_path = batch[idx]
+                    boxes = r.boxes
+                    pred = []
+                    
+                    for b in boxes:
+                        xyxyn = b.xyxyn[0]
+                        pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
+                    
+                    predictions = torch.tensor(pred)
+                    
+                    # Save outputs
+                    rel_path = os.path.relpath(os.path.dirname(img_path), self.img_dir)
+                    
+                    # Save image predictions
+                    if self.save_img:
+                        os.makedirs(os.path.join(self.surface_imgsave_dir, rel_path), exist_ok=True)
+                        self.save_image_predictions_bb(
+                            predictions, 
+                            img_path, 
+                            os.path.join(self.surface_imgsave_dir, rel_path),
+                            self.surface_classes, 
+                            self.surface_class_colours
+                        )
+                    
+                    # Save text and JSON predictions
+                    if self.save_txt:
+                        os.makedirs(os.path.join(self.surface_txtsave_dir, rel_path), exist_ok=True)
+                        self.save_txt_predictions_bb(predictions, img_path, os.path.join(self.surface_txtsave_dir, rel_path))
+                        self.save_json_predictions_bb(
+                            predictions, 
+                            img_path, 
+                            os.path.join(self.surface_txtsave_dir, rel_path),
+                            self.surface_weights_path, 
+                            self.surface_classes
+                        )
+                
+                results.append((len(pred), "surface"))
+        
+        # Process subsurface images in batches
+        if subsurface_images:
+            print(f"Processing {len(subsurface_images)} subsurface images with GPU batching")
+            batch_size = 8  # You can adjust this based on your GPU memory
+            
+            for i in tqdm(range(0, len(subsurface_images), batch_size), desc=f"{desc} (subsurface)", unit="batch"):
+                batch = subsurface_images[i:i+batch_size]
+                
+                # Run prediction on batch
+                batch_results = self.subsurface_model.predict(
+                    source=batch, 
+                    iou=self.iou_thresh, 
+                    conf=self.conf_thresh, 
+                    agnostic_nms=True, 
+                    max_det=self.max_det,
+                    verbose=self.verbose
+                )
+                
+                # Process each result in the batch
+                for idx, r in enumerate(batch_results):
+                    img_path = batch[idx]
+                    boxes = r.boxes
+                    pred = []
+                    
+                    for b in boxes:
+                        xyxyn = b.xyxyn[0]
+                        pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
+                    
+                    predictions = torch.tensor(pred)
+                    
+                    # Save outputs
+                    rel_path = os.path.relpath(os.path.dirname(img_path), self.img_dir)
+                    
+                    # Save image predictions
+                    if self.save_img:
+                        os.makedirs(os.path.join(self.subsurface_imgsave_dir, rel_path), exist_ok=True)
+                        self.save_image_predictions_bb(
+                            predictions, 
+                            img_path, 
+                            os.path.join(self.subsurface_imgsave_dir, rel_path),
+                            self.subsurface_classes, 
+                            self.subsurface_class_colours
+                        )
+                    
+                    # Save text and JSON predictions
+                    if self.save_txt:
+                        os.makedirs(os.path.join(self.subsurface_txtsave_dir, rel_path), exist_ok=True)
+                        self.save_txt_predictions_bb(predictions, img_path, os.path.join(self.subsurface_txtsave_dir, rel_path))
+                        self.save_json_predictions_bb(
+                            predictions, 
+                            img_path, 
+                            os.path.join(self.subsurface_txtsave_dir, rel_path),
+                            self.subsurface_weights_path, 
+                            self.subsurface_classes
+                        )
+                
+                results.append((len(pred), "subsurface"))
+        
+        return results
+        
 
     def _extract_classes_from_model(self, model):
         """
@@ -477,26 +745,31 @@ if __name__ == "__main__":
     surface_weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_20230905_yolov8n_640p_amtenuis1000.pt'
     subsurface_weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_subsurface_20250205_640p_yolov8n.pt'
     img_dir = '/home/dtsai/Data/cslics_datasets/icra2025/feature_development/images'
-    save_dir = '/home/dtsai/Data/cslics_datasets/icra2025/feature_development/output'
+    save_dir = '/home/dtsai/Data/cslics_datasets/icra2025/feature_development/detections'
     
     # Define submersion time (when camera was submerged)
     submersion_time = "2023-12-05_23-45-00"  # Format: YYYY-MM-DD_HH-MM-SS
     
+    # Unique identifier for this detection run
+    cslics_uuid = "cslics08"
+    
     # Choose processing mode: "surface", "subsurface", or "both"
     processing_mode = "both"
     
-    # Initialize predictor with the specified mode
+    # Initialize predictor with the specified mode and UUID
     predictor = CoralSpawnPredictor(
         surface_weights_path=surface_weights_path,
         subsurface_weights_path=subsurface_weights_path,
         img_dir=img_dir,
         save_dir=save_dir,
         submersion_time=submersion_time,
-        mode=processing_mode,  # Specify which images to process
+        cslics_uuid=cslics_uuid,  # Add the UUID parameter
+        mode=processing_mode,
         iou_thresh=0.3,
         conf_thresh=0.25,
         max_images=200000,
-        verbose=False  # Set to True for detailed model output
+        verbose=False,
+        parallel=True
     )
     
     # Run prediction
