@@ -282,8 +282,16 @@ class CSLICSDataProcessor:
             # Average stats over the batch
             batched_image_count.append(np.mean(sample_count))
             batched_std.append(np.std(sample_count))
-            capture_time_str = Path(sample_batch[len(sample_batch) // 2]).stem[:-10]
-            batched_time.append(datetime.strptime(capture_time_str, "%Y-%m-%d_%H-%M-%S"))
+            # for 2024 capture string
+            # capture_time_str = Path(sample_batch[len(sample_batch) // 2]).stem[:-10]
+            # for 2023 capture string
+            capture_time_str = Path(sample_batch[len(sample_batch) // 2]).stem[9:-15]
+            # 2024 capture time string format
+            # batched_time.append(datetime.strptime(capture_time_str, "%Y-%m-%d_%H-%M-%S"))
+            # 2023 capture time string format
+            # import code
+            # code.interact(local=dict(globals(), **locals()))
+            batched_time.append(datetime.strptime(capture_time_str, "%Y%m%d_%H%M%S"))
             batched_invalid_indices.append(batch_invalid_indices)
 
         # Convert batched_time to decimal days and zero the time since spawning
@@ -337,7 +345,7 @@ class CSLICSDataProcessor:
         plt.grid(True)
         plt.xlabel('Days since spawning')
         plt.ylabel(f'Image count (batched {self.aggregate_size} images)')
-        plt.title(f'CSLICS AI Count: {self.tank_sheet_name}')
+        plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid}')
         plt.legend()
         output_path = os.path.join(self.save_det_dir, f'Image_counts_{self.tank_sheet_name}.png')
         plt.savefig(output_path)
@@ -563,9 +571,9 @@ class CSLICSDataProcessor:
         plt.grid(True)
         plt.xlabel('Days since spawning')
         plt.ylabel(f'Tank count (batched {self.aggregate_size} images)')
-        plt.title(f'CSLICS AI Count: {self.tank_sheet_name} - ({plot_label})')
+        plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid} - ({plot_label})')
         plt.tight_layout()
-        output_path = os.path.join(self.save_det_dir, f'Combined_tank_counts_{self.tank_sheet_name}_{plot_label}.png')
+        output_path = os.path.join(self.save_det_dir, f'Combined_tank_counts_{self.tank_sheet_name}_{self.cslics_uuid}_{plot_label}.png')
         plt.savefig(output_path, dpi=600)
         print(f'Plot saved to {output_path}')
         if SHOW:
@@ -873,10 +881,14 @@ if __name__ == "__main__":
     
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t1_amil_100000000029da9b.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t2_amil_100000009c23b5af.json"
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t3_amil_10000000f620da42.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t3_amil_10000000f620da42.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t4_pdae_100000001ab0438d.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t5_pdae_100000000846a7ff.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t6_lcor_10000000570f9d9c.json"
+    
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics01.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics08.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics09.json"
     
     processor = CSLICSDataProcessor(config_file)
     # (tank_counts_def, tank_std_def), (tank_counts_cal, tank_std_cal), (manual_counts, manual_std), manual_times_dt

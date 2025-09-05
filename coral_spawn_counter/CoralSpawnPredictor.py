@@ -11,16 +11,18 @@ from ultralytics import YOLO
 
 
 class CoralSpawnPredictor:
-    def __init__(self, weights_path, img_dir, save_dir, classes, class_colours, iou_thresh=0.3, max_det=1000, save_img=True, save_txt=True):
+    def __init__(self, weights_path, img_dir, save_dir, classes, class_colours, iou_thresh=0.3, conf_thresh=0.25, max_det=1000, save_img=True, save_txt=True, max_images=None):
         self.weights_path = weights_path
         self.img_dir = img_dir
         self.save_dir = save_dir
         self.classes = classes
         self.class_colours = class_colours
         self.iou_thresh = iou_thresh
+        self.conf_thresh = conf_thresh  # Add this line
         self.max_det = max_det
         self.save_img = save_img
         self.save_txt = save_txt
+        self.max_images = max_images  # Add this line
         self.current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Initialize model
@@ -94,7 +96,7 @@ class CoralSpawnPredictor:
         """
         Process a single image: run inference, save predictions as images, text, and JSON.
         """
-        results = self.model.predict(source=img_name, iou=self.iou_thresh, agnostic_nms=True, max_det=self.max_det)
+        results = self.model.predict(source=img_name, iou=self.iou_thresh, conf=self.conf_thresh, agnostic_nms=True, max_det=self.max_det)
         boxes = results[0].boxes
         pred = []
         for b in boxes:
@@ -123,8 +125,14 @@ class CoralSpawnPredictor:
         Run the prediction on all images in the directory.
         """
         print(f'Fetching image list in all subfolders from: {self.img_dir}')
-        img_list = sorted(Path(self.img_dir).rglob('*_clean.jpg'))
-        print(f'Number of images: {len(img_list)}')
+        img_list = sorted(Path(self.img_dir).rglob('*_img.jpg'))
+        
+        # Apply max_images limit if specified
+        if self.max_images is not None and self.max_images > 0:
+            img_list = img_list[:self.max_images]
+            print(f'Limited to first {self.max_images} images')
+        
+        print(f'Number of images to process: {len(img_list)}')
 
         start_time = time.time()
 
@@ -139,16 +147,47 @@ class CoralSpawnPredictor:
         print(f'Run time: {duration:.2f} sec')
         print(f'Run time: {duration / 60.0:.2f} min')
         print(f'Run time: {duration / 3600.0:.2f} hrs')
-        print(f'Time[s]/image = {duration / len(img_list):.2f}')
+        if len(img_list) > 0:
+            print(f'Time[s]/image = {duration / len(img_list):.2f}')
+        else:
+            print('No images processed.')
+        
 
 
 # Example usage
 if __name__ == "__main__":
-    weights_path = '/home/tsaid/data/cslics_datasets/models/cslics_subsurface_20250205_640p_yolov8n.pt'
-    img_dir = '/home/tsaid/data/cslics_datasets/cslics_november_2024/100000000846a7ff'
-    save_dir = '/home/tsaid/data/cslics_datasets/cslics_november_2024/detections/100000000846a7ff'
+    # weights_path = '/home/tsaid/data/cslics_datasets/models/cslics_subsurface_20250205_640p_yolov8n.pt'
+    # img_dir = '/home/tsaid/data/cslics_datasets/cslics_november_2024/100000000846a7ff'
+    # save_dir = '/home/tsaid/data/cslics_datasets/cslics_november_2024/detections/100000000846a7ff'
+    
+    # weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_subsurface_202508185_640p_yolov8n.pt'
+    # img_dir = '/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/20231205_alor_tank4_cslics09/images'
+    img_dir = '/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/20231205_alor_tank4_cslics08/images'
+
+    save_dir = '/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/detections/cslics08'
+
+    # format expected by CslicsDataProcessor.py
+    # f'{self.base_det_dir}/{self.cslics_uuid}/{self.model_name}'    
+    
+    # weights_path = '/home/dtsai/Data/cslics_datasets/cslics_2023_subsurface_dataset/models/20241122_cslics_subsurface_yolov8n_640p.pt'
+    weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_subsurface_202508185_640p_yolov8n.pt'
+    
+    model_name = os.path.splitext(os.path.basename(weights_path))[0]
+    save_dir = os.path.join(save_dir, model_name)
+    # img_dir = '/home/dtsai/Data/cslics_datasets/cslics_2023_subsurface_dataset/runs/combined/split/images/train'
+    # save_dir = '/home/dtsai/Data/cslics_datasets/cslics_2023_subsurface_dataset/runs/combined/detections'
     classes = ['coral']
     class_colours = {'coral': [0, 0, 255]}
 
-    predictor = CoralSpawnPredictor(weights_path, img_dir, save_dir, classes, class_colours)
+    # Process only the first 100000 images with custom confidence threshold
+    predictor = CoralSpawnPredictor(
+        weights_path, 
+        img_dir, 
+        save_dir, 
+        classes, 
+        class_colours,
+        iou_thresh=0.3,     # IOU threshold for NMS
+        conf_thresh=0.25,   # Confidence threshold for detections
+        max_images=200000   # Maximum number of images to process
+    )
     predictor.run()
