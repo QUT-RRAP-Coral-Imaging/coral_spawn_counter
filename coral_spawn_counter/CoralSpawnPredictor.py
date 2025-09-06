@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+"""
+CSLICS Data Processor
+- Encapsulates functionality for processing and plotting tank estimates with manual counts.
+"""
 import os
 import json
 import time
-import numpy as np
 from pathlib import Path
 from datetime import datetime
 import torch
@@ -11,93 +14,66 @@ import cv2 as cv
 from ultralytics import YOLO
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
-
+from matplotlib import pyplot as plt
+import numpy as np
 
 class CoralSpawnPredictor:
-    def __init__(
-        self, 
-        surface_weights_path, 
-        subsurface_weights_path,
-        img_dir, 
-        save_dir, 
-        submersion_time,  # Format: "YYYY-MM-DD_HH-MM-SS"
-        cslics_uuid,      # Unique identifier for the run
-        mode="both",      # "surface", "subsurface", or "both"
-        iou_thresh=0.3, 
-        conf_thresh=0.25, 
-        max_det=1000, 
-        save_img=True, 
-        save_txt=True,
-        save_txt_bb=False,
-        max_images=None,
-        verbose=False,    # Control verbosity
-        parallel=False    # Control parallel processing
-    ):
+    def __init__(self, config_file):
         """
-        Initialize the coral spawn predictor with two models: one for surface and one for subsurface.
+        Initialize the coral spawn predictor with either a config file or direct parameters.
         
         Args:
-            surface_weights_path: Path to the surface detection model weights
-            subsurface_weights_path: Path to the subsurface detection model weights
-            img_dir: Directory containing input images
-            save_dir: Base directory to save detection results
-            submersion_time: Time string in format "YYYY-MM-DD_HH-MM-SS" dividing surface/subsurface
-            cslics_uuid: Unique identifier for organizing output files
-            mode: Which images to process - "surface", "subsurface", or "both" (default)
-            iou_thresh: IoU threshold for non-maximum suppression
-            conf_thresh: Confidence threshold for detections
-            max_det: Maximum number of detections per image
-            save_img: Whether to save images with bounding boxes
-            save_txt: Whether to save detection results as text/json
-            save_txt_bb: Whether to save detection results as bounding box text format
-            max_images: Maximum number of images to process
-            verbose: Whether to show detailed output from models
-            parallel: Whether to use parallel processing
+            config_file: Path to the JSON configuration file
+            **kwargs: Direct parameters (override config file if both provided)
         """
+        # Load configuration from the JSON file
+        self.config = self.load_config_from_json(config_file)
+        
+        # Extract required parameters
+        self.surface_weights_path = self.config['surface_weights_path']
+        self.subsurface_weights_path = self.config['subsurface_weights_path']
+        self.img_dir = self.config['img_dir']
+        self.save_dir = self.config['save_dir']
+        self.cslics_uuid = self.config['cslics_uuid']
+        self.submersion_time = self.config['submersion_time']
+
+        # Extract optional parameters with defaults
+        self.mode = self.config.get('processing_mode', 'both')
+        self.iou_thresh = float(self.config.get('iou_thresh', 0.3))
+        self.conf_thresh = float(self.config.get('conf_thresh', 0.25))
+        self.max_det = int(self.config.get('max_det', 1000))
+        self.save_img = self.config.get('save_img', True)
+        self.save_txt = self.config.get('save_txt', True)
+        self.save_txt_bb = self.config.get('save_txt_bb', False)
+        self.max_images = int(self.config.get('max_images', 0)) if self.config.get('max_images') else None
+        self.verbose = self._parse_bool(self.config.get('verbose', False))
+        self.parallel = self._parse_bool(self.config.get('parallel', False))
+        
+        # Validate required parameters
+        self._validate_params()
+        
         # Validate processing mode
         valid_modes = ["surface", "subsurface", "both"]
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
+        if self.mode not in valid_modes:
+            raise ValueError(f"Invalid mode: {self.mode}. Must be one of {valid_modes}")
         
-        self.mode = mode
-        self.cslics_uuid = cslics_uuid  # Store UUID for organizing outputs
+        # Extract model IDs (stem names)
+        self.surface_model_id = Path(self.surface_weights_path).stem
+        self.subsurface_model_id = Path(self.subsurface_weights_path).stem
+
+        # Parse submersion time
+        self.submersion_datetime = datetime.strptime(self.submersion_time, "%Y-%m-%d_%H-%M-%S")
         
-        self.verbose = verbose  # Store verbosity setting
-        self.parallel = parallel  # Store parallel processing setting
-        
-        # Model paths and model IDs (stem names)
-        self.surface_weights_path = surface_weights_path
-        self.surface_model_id = Path(surface_weights_path).stem
-        
-        self.subsurface_weights_path = subsurface_weights_path
-        self.subsurface_model_id = Path(subsurface_weights_path).stem
-        
-        # Directory paths
-        self.img_dir = img_dir
-        self.save_dir = save_dir        
-        
-        # Submersion time as a dividing point
-        self.submersion_time = submersion_time
-        self.submersion_datetime = datetime.strptime(submersion_time, "%Y-%m-%d_%H-%M-%S")
-        
-        # Detection parameters
-        self.iou_thresh = iou_thresh
-        self.conf_thresh = conf_thresh
-        self.max_det = max_det
-        self.save_img = save_img
-        self.save_txt = save_txt
-        self.save_txt_bb = save_txt_bb
-        self.max_images = max_images
+        # Timestamp for detection runs
         self.current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Initialize models and load class information
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         
-        
         # Only load needed models based on mode
         if self.mode in ["surface", "both"]:
-            print(f'Loading surface model: {surface_weights_path}')
-            self.surface_model = YOLO(surface_weights_path, verbose=self.verbose).to(self.device)
+            print(f'Loading surface model: {self.surface_weights_path}')
+            self.surface_model = YOLO(self.surface_weights_path, verbose=self.verbose).to(self.device)
             self.surface_classes = self._extract_classes_from_model(self.surface_model)
             self.surface_class_colours = self._generate_class_colors(self.surface_classes)
             print(f'Surface model classes: {self.surface_classes}')
@@ -105,17 +81,132 @@ class CoralSpawnPredictor:
             self.surface_model = None
             
         if self.mode in ["subsurface", "both"]:
-            print(f'Loading subsurface model: {subsurface_weights_path}')
-            self.subsurface_model = YOLO(subsurface_weights_path, verbose=self.verbose).to(self.device)
+            print(f'Loading subsurface model: {self.subsurface_weights_path}')
+            self.subsurface_model = YOLO(self.subsurface_weights_path, verbose=self.verbose).to(self.device)
             self.subsurface_classes = self._extract_classes_from_model(self.subsurface_model)
             self.subsurface_class_colours = self._generate_class_colors(self.subsurface_classes)
             print(f'Subsurface model classes: {self.subsurface_classes}')
         else:
             self.subsurface_model = None
-        
+
         # Prepare output directories
         self._prepare_output_directories()
+        
+        # Print configuration summary
+        self._print_config_summary()
+    
+    @staticmethod
+    def load_config_from_json(config_file):
+        """
+        Load configuration from a JSON file.
 
+        Args:
+            config_file (str): Path to the JSON configuration file.
+
+        Returns:
+            dict: Configuration dictionary.
+        """
+        try:
+            with open(config_file, 'r') as file:
+                config = json.load(file)
+            print(f"Configuration loaded successfully from {config_file}")
+            return config
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Error: Configuration file {config_file} not found.")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Error: Failed to parse JSON file {config_file}. Details: {e}")
+    
+    def _validate_params(self):
+        """Validate required parameters"""
+        if not self.surface_weights_path:
+            raise ValueError("surface_weights_path not specified")
+        if not self.subsurface_weights_path:
+            raise ValueError("subsurface_weights_path not specified")
+        if not self.img_dir:
+            raise ValueError("img_dir not specified")
+        if not self.save_dir:
+            raise ValueError("save_dir not specified")
+        if not self.submersion_time:
+            raise ValueError("submersion_time not specified")
+    
+    def _parse_bool(self, value):
+        """Parse boolean values from various formats"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in ('true', 'yes', '1', 't', 'y')
+        return bool(value)
+    
+    def _print_config_summary(self):
+        """Print a summary of the current configuration"""
+        print("\nCoralSpawnPredictor Configuration:")
+        print(f"  CSLICS UUID: {self.cslics_uuid}")
+        print(f"  Images directory: {self.img_dir}")
+        print(f"  Output directory: {self.save_dir}")
+        print(f"  Processing mode: {self.mode}")
+        print(f"  Submersion time: {self.submersion_time}")
+        print(f"  Parallel processing: {'Enabled' if self.parallel else 'Disabled'}")
+        print(f"  Confidence threshold: {self.conf_thresh}")
+        print(f"  IoU threshold: {self.iou_thresh}")
+        if self.max_images:
+            print(f"  Max images: {self.max_images}")
+        print(f"  Device: {self.device}\n")
+    
+    def _extract_classes_from_model(self, model):
+        """
+        Extract class names from a YOLO model.
+        
+        Args:
+            model: YOLO model instance
+            
+        Returns:
+            list: List of class names
+        """
+        return model.names if hasattr(model, 'names') else []
+    
+    def _generate_class_colors(self, classes):
+        """
+        Generate colors for classes.
+        
+        Args:
+            classes: List or dictionary of class names
+            
+        Returns:
+            dict: Dictionary mapping class names to BGR colors
+        """
+        colors = {}
+        
+        # Define some distinct colors (BGR format)
+        predefined_colors = [
+            [0, 0, 255],    # Red
+            [0, 255, 0],    # Green
+            [255, 0, 0],    # Blue
+            [0, 255, 255],  # Yellow
+            [255, 0, 255],  # Magenta
+            [255, 255, 0],  # Cyan
+            [128, 0, 0],    # Dark blue
+            [0, 128, 0],    # Dark green
+            [0, 0, 128],    # Dark red
+            [0, 128, 128]   # Dark yellow
+        ]
+        
+        # If classes is a dictionary, use its keys
+        class_names = classes.keys() if isinstance(classes, dict) else classes
+        
+        for i, name in enumerate(class_names):
+            # Use predefined colors for the first few classes, then generate random colors
+            if i < len(predefined_colors):
+                colors[name] = predefined_colors[i]
+            else:
+                # Generate a random color (BGR)
+                colors[name] = [
+                    np.random.randint(0, 255),
+                    np.random.randint(0, 255),
+                    np.random.randint(0, 255)
+                ]
+        
+        return colors
+    
     def _prepare_output_directories(self):
         """Create output directories for both models."""
         
@@ -138,6 +229,38 @@ class CoralSpawnPredictor:
         # Print output directories
         print(f"Surface detection outputs will be saved to: {self.surface_save_dir}")
         print(f"Subsurface detection outputs will be saved to: {self.subsurface_save_dir}")
+        
+    
+    def convert_to_decimal_days(self, dates_list, time_zero=None):
+        """
+        Convert datetime objects to decimal days since time_zero.
+        
+        Args:
+            dates_list: List of datetime objects
+            time_zero: Reference time (if None, use configured time_zero)
+            
+        Returns:
+            list: Decimal days since time_zero
+        """
+        if time_zero is None:
+            # Use configured time_zero or spawning_start_time as default
+            if self.time_zero:
+                time_zero = datetime.strptime(self.time_zero, "%Y-%m-%d_%H-%M-%S")
+            elif self.spawning_start_time:
+                time_zero = datetime.strptime(self.spawning_start_time, "%Y-%m-%d_%H-%M-%S")
+            else:
+                # Use the first date in the list
+                time_zero = dates_list[0] if dates_list else datetime.now()
+                print(f"No time_zero specified, using first date: {time_zero}")
+        
+        # Convert each datetime to days since time_zero
+        decimal_days = []
+        for dt in dates_list:
+            delta = dt - time_zero
+            days = delta.total_seconds() / (24 * 3600)  # Convert seconds to days
+            decimal_days.append(days)
+            
+        return decimal_days
 
     def is_surface_image(self, img_path):
         """
@@ -161,7 +284,87 @@ class CoralSpawnPredictor:
             # If datetime parsing fails, assume it's a surface image
             print(f"Warning: Could not parse datetime from filename: {filename}")
             return True
+    
+    def process_image(self, img_name):
+        """
+        Process a single image: determine if it's surface or subsurface,
+        run inference with the appropriate model, save predictions.
+        
+        Args:
+            img_name: Path to the image file
+            
+        Returns:
+            tuple: (detection_count, model_type) or None if skipped
+        """
+        is_surface = self.is_surface_image(img_name)
+        
+        # Skip processing based on mode
+        if (is_surface and self.mode == "subsurface") or (not is_surface and self.mode == "surface"):
+            return 0, "skipped"
+        
+        # Select appropriate model, classes, colors, and save directories
+        if is_surface:
+            model = self.surface_model
+            classes = self.surface_classes
+            class_colours = self.surface_class_colours
+            imgsave_dir = self.surface_imgsave_dir
+            txtsave_dir = self.surface_txtsave_dir
+            model_path = self.surface_weights_path
+            model_type = "surface"
+        else:
+            model = self.subsurface_model
+            classes = self.subsurface_classes
+            class_colours = self.subsurface_class_colours
+            imgsave_dir = self.subsurface_imgsave_dir
+            txtsave_dir = self.subsurface_txtsave_dir
+            model_path = self.subsurface_weights_path
+            model_type = "subsurface"
+        
+        # Run inference
+        results = model.predict(
+            source=img_name, 
+            iou=self.iou_thresh, 
+            conf=self.conf_thresh, 
+            agnostic_nms=True, 
+            max_det=self.max_det,
+            verbose=self.verbose  # Add this parameter
+        )
+        
+        boxes = results[0].boxes
+        pred = []
+        for b in boxes:
+            if torch.cuda.is_available():
+                xyxyn = b.xyxyn[0]
+                pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
+        predictions = torch.tensor(pred)
 
+        # Determine relative path for saving
+        rel_path = os.path.relpath(os.path.dirname(img_name), self.img_dir)
+
+        # Save image predictions
+        if self.save_img:
+            os.makedirs(os.path.join(imgsave_dir, rel_path), exist_ok=True)
+            self.save_image_predictions_bb(predictions, img_name, os.path.join(imgsave_dir, rel_path), classes, class_colours)
+
+        # Save text and JSON predictions
+        if self.save_txt:
+            os.makedirs(os.path.join(txtsave_dir, rel_path), exist_ok=True)
+            self.save_txt_predictions_bb(predictions, img_name, os.path.join(txtsave_dir, rel_path))
+            self.save_json_predictions_bb(predictions, img_name, os.path.join(txtsave_dir, rel_path), model_path, classes)
+        
+        # Save bounding box text format if enabled
+        if self.save_txt_bb:
+            bb_txt_save_path = os.path.join(txtsave_dir, rel_path, os.path.basename(img_name)[:-4] + '_det_bb.txt')
+            with open(bb_txt_save_path, "w") as file:
+                for p in predictions:
+                    x1, y1, x2, y2 = p[0:4].tolist()
+                    conf = p[4]
+                    cls = int(p[5])
+                    line = f"{x1} {y1} {x2} {y2} {conf}\n"
+                    file.write(line)
+        
+        return len(pred), model_type
+    
     def save_image_predictions_bb(self, predictions, imgname, imgsavedir, classes, class_colours):
         """
         Save predictions/detections on image as bounding box.
@@ -252,87 +455,7 @@ class CoralSpawnPredictor:
         }
         with open(json_save_path, 'w') as f:
             json.dump(predictions_dict, f, indent=4)
-
-    def process_image(self, img_name):
-        """
-        Process a single image: determine if it's surface or subsurface,
-        run inference with the appropriate model, save predictions.
-        
-        Args:
-            img_name: Path to the image file
-            
-        Returns:
-            tuple: (detection_count, model_type) or None if skipped
-        """
-        is_surface = self.is_surface_image(img_name)
-        
-        # Skip processing based on mode
-        if (is_surface and self.mode == "subsurface") or (not is_surface and self.mode == "surface"):
-            return 0, "skipped"
-        
-        # Select appropriate model, classes, colors, and save directories
-        if is_surface:
-            model = self.surface_model
-            classes = self.surface_classes
-            class_colours = self.surface_class_colours
-            imgsave_dir = self.surface_imgsave_dir
-            txtsave_dir = self.surface_txtsave_dir
-            model_path = self.surface_weights_path
-            model_type = "surface"
-        else:
-            model = self.subsurface_model
-            classes = self.subsurface_classes
-            class_colours = self.subsurface_class_colours
-            imgsave_dir = self.subsurface_imgsave_dir
-            txtsave_dir = self.subsurface_txtsave_dir
-            model_path = self.subsurface_weights_path
-            model_type = "subsurface"
-        
-        # Run inference
-        results = model.predict(
-            source=img_name, 
-            iou=self.iou_thresh, 
-            conf=self.conf_thresh, 
-            agnostic_nms=True, 
-            max_det=self.max_det,
-            verbose=self.verbose  # Add this parameter
-        )
-        
-        boxes = results[0].boxes
-        pred = []
-        for b in boxes:
-            if torch.cuda.is_available():
-                xyxyn = b.xyxyn[0]
-                pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
-        predictions = torch.tensor(pred)
-
-        # Determine relative path for saving
-        rel_path = os.path.relpath(os.path.dirname(img_name), self.img_dir)
-
-        # Save image predictions
-        if self.save_img:
-            os.makedirs(os.path.join(imgsave_dir, rel_path), exist_ok=True)
-            self.save_image_predictions_bb(predictions, img_name, os.path.join(imgsave_dir, rel_path), classes, class_colours)
-
-        # Save text and JSON predictions
-        if self.save_txt:
-            os.makedirs(os.path.join(txtsave_dir, rel_path), exist_ok=True)
-            self.save_txt_predictions_bb(predictions, img_name, os.path.join(txtsave_dir, rel_path))
-            self.save_json_predictions_bb(predictions, img_name, os.path.join(txtsave_dir, rel_path), model_path, classes)
-        
-        # Save bounding box text format if enabled
-        if self.save_txt_bb:
-            bb_txt_save_path = os.path.join(txtsave_dir, rel_path, os.path.basename(img_name)[:-4] + '_det_bb.txt')
-            with open(bb_txt_save_path, "w") as file:
-                for p in predictions:
-                    x1, y1, x2, y2 = p[0:4].tolist()
-                    conf = p[4]
-                    cls = int(p[5])
-                    line = f"{x1} {y1} {x2} {y2} {conf}\n"
-                    file.write(line)
-        
-        return len(pred), model_type
-
+    
     def run(self):
         """
         Run prediction on all images in the directory with separate progress bars
@@ -538,8 +661,8 @@ class CoralSpawnPredictor:
                             print(f"{desc}: {progress:.1f}% ({completed}/{total})", end="\r")
                     print()  # Add a newline after progress updates
             
-            return results
-
+            return results  
+    
     def _process_images_parallel_gpu(self, img_list, desc):
         """
         Process a list of images in parallel using GPU batching.
@@ -681,96 +804,20 @@ class CoralSpawnPredictor:
                 results.append((len(pred), "subsurface"))
         
         return results
-        
-
-    def _extract_classes_from_model(self, model):
-        """
-        Extract class names from a YOLO model.
-        
-        Args:
-            model: YOLO model instance
-            
-        Returns:
-            list: List of class names
-        """
-        return model.names if hasattr(model, 'names') else []
-
-    def _generate_class_colors(self, classes):
-        """
-        Generate colors for classes.
-        
-        Args:
-            classes: List or dictionary of class names
-            
-        Returns:
-            dict: Dictionary mapping class names to BGR colors
-        """
-        colors = {}
-        
-        # Define some distinct colors (BGR format)
-        predefined_colors = [
-            [0, 0, 255],    # Red
-            [0, 255, 0],    # Green
-            [255, 0, 0],    # Blue
-            [0, 255, 255],  # Yellow
-            [255, 0, 255],  # Magenta
-            [255, 255, 0],  # Cyan
-            [128, 0, 0],    # Dark blue
-            [0, 128, 0],    # Dark green
-            [0, 0, 128],    # Dark red
-            [0, 128, 128]   # Dark yellow
-        ]
-        
-        # If classes is a dictionary, use its keys
-        class_names = classes.keys() if isinstance(classes, dict) else classes
-        
-        for i, name in enumerate(class_names):
-            # Use predefined colors for the first few classes, then generate random colors
-            if i < len(predefined_colors):
-                colors[name] = predefined_colors[i]
-            else:
-                # Generate a random color (BGR)
-                colors[name] = [
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255),
-                    np.random.randint(0, 255)
-                ]
-        
-        return colors
-        
 
 # Example usage
 if __name__ == "__main__":
-    # Configuration
-    surface_weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_20230905_yolov8n_640p_amtenuis1000.pt'
-    subsurface_weights_path = '/home/dtsai/Data/cslics_datasets/models/cslics_subsurface_20250205_640p_yolov8n.pt'
-    img_dir = '/home/dtsai/Data/cslics_datasets/icra2025/feature_development/images'
-    save_dir = '/home/dtsai/Data/cslics_datasets/icra2025/feature_development/detections'
+    import argparse
     
-    # Define submersion time (when camera was submerged)
-    submersion_time = "2023-12-05_23-45-00"  # Format: YYYY-MM-DD_HH-MM-SS
+    parser = argparse.ArgumentParser(description='Coral Spawn Predictor')
+    parser.add_argument('--config', type=str, help='Path to config file')
+    args = parser.parse_args()
     
-    # Unique identifier for this detection run
-    cslics_uuid = "cslics08"
-    
-    # Choose processing mode: "surface", "subsurface", or "both"
-    processing_mode = "both"
-    
-    # Initialize predictor with the specified mode and UUID
-    predictor = CoralSpawnPredictor(
-        surface_weights_path=surface_weights_path,
-        subsurface_weights_path=subsurface_weights_path,
-        img_dir=img_dir,
-        save_dir=save_dir,
-        submersion_time=submersion_time,
-        cslics_uuid=cslics_uuid,  # Add the UUID parameter
-        mode=processing_mode,
-        iou_thresh=0.3,
-        conf_thresh=0.25,
-        max_images=200000,
-        verbose=False,
-        parallel=True
-    )
-    
-    # Run prediction
+    # Default config file path if not specified
+    if not args.config:
+        args.config = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08.json"
+
+    predictor = CoralSpawnPredictor(config_file=args.config)    
     predictor.run()
+    
+    print("Processing complete")
