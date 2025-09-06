@@ -854,6 +854,14 @@ class CoralSpawnPredictor:
                 boxes = r.boxes
                 pred_count = len(boxes)
                 
+                # Convert predictions to tensor format - IMPORTANT: Missing this
+                pred = []
+                for b in boxes:
+                    xyxyn = b.xyxyn[0]
+                    pred.append([xyxyn[0], xyxyn[1], xyxyn[2], xyxyn[3], b.conf, b.cls])
+                
+                predictions = torch.tensor(pred) if pred else torch.zeros((0, 6))
+                
                 # Extract timestamp from filename for detection tracking
                 filename = Path(img_path).stem
                 try:
@@ -876,16 +884,36 @@ class CoralSpawnPredictor:
                     # If timestamp parsing fails, just skip tracking this for plotting
                     pass
                 
-                # Rest of processing for saving files, etc.
-                # ...
+                # MISSING CODE: Save the actual files
+                rel_path = os.path.relpath(os.path.dirname(img_path), self.img_dir)
+                
+                # Skip empty predictions to avoid unnecessary file operations
+                if pred_count == 0 and not self.save_img:
+                    results.append((0, model_type))
+                    continue
+                    
+                # Save image predictions
+                if self.save_img:
+                    img_save_subdir = os.path.join(imgsave_dir, rel_path)
+                    self.save_image_predictions_bb(
+                        predictions, img_path, img_save_subdir, classes, class_colours
+                    )
+                
+                # Save text and JSON predictions
+                if self.save_txt:
+                    txt_save_subdir = os.path.join(txtsave_dir, rel_path)
+                    self.save_txt_predictions_bb(predictions, img_path, txt_save_subdir)
+                    self.save_json_predictions_bb(
+                        predictions, img_path, txt_save_subdir, model_path, classes
+                    )
                 
                 results.append((pred_count, model_type))
-            
-            # Update JSON file once per batch instead of per image
-            self._batch_update_detection_data(batch_detections, batch_total, model_type)
-            batch_detections = {}  # Reset for next batch
-            batch_total = 0
         
+        # Update JSON file once per batch instead of per image
+        self._batch_update_detection_data(batch_detections, batch_total, model_type)
+        batch_detections = {}  # Reset for next batch
+        batch_total = 0
+    
         return results
 
     def _batch_update_detection_data(self, detections_dict, total_count, model_type):
@@ -1304,7 +1332,8 @@ class CoralSpawnPredictor:
 
 if __name__ == "__main__":
     
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08.json"
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics01.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08_test.json"
     # Initialize predictor with the config file
     predictor = CoralSpawnPredictor(config_file)
     
