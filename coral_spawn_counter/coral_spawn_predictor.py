@@ -156,7 +156,7 @@ class CoralSpawnPredictor:
                 surface_results = self.image_processor.process_images_with_progress(surface_img_list, "Surface images")
                 results.extend(surface_results)
             
-            if self.config.mode in ["subsurface", "both"] and subsurface_img_list:
+            if self. config.mode in ["subsurface", "both"] and subsurface_img_list:
                 print("\nProcessing subsurface images:")
                 subsurface_results = self.image_processor.process_images_with_progress(subsurface_img_list, "Subsurface images")
                 results.extend(subsurface_results)
@@ -202,7 +202,7 @@ class CoralSpawnPredictor:
 if __name__ == "__main__":
     
     # Default config file path if not specified
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08_test.json"
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics01.json"
     
     # Load and update config with command line arguments
     with open(config_file, 'r') as f:
@@ -216,8 +216,7 @@ if __name__ == "__main__":
     # Initialize and run predictor
     predictor = CoralSpawnPredictor(config_file)
     
-    if not config.get('plot_only', False):
-        predictor.run()
+    predictor.run()
     
     # Generate plots
     print("Generating detection plots...")

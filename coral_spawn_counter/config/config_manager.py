@@ -39,13 +39,13 @@ class ConfigManager:
 
         # Optional parameters with defaults
         self.mode = self.config.get('processing_mode', 'both')
-        self.plot_only = self.config.get('plot_only', False)
+        self.plot_only = self._parse_bool(self.config.get('plot_only', False))
         self.iou_thresh = float(self.config.get('iou_thresh', 0.3))
         self.conf_thresh = float(self.config.get('conf_thresh', 0.25))
         self.max_det = int(self.config.get('max_det', 1000))
-        self.save_img = self.config.get('save_img', True)
-        self.save_txt = self.config.get('save_txt', True)
-        self.save_txt_bb = self.config.get('save_txt_bb', False)
+        self.save_img = self._parse_bool(self.config.get('save_img', True))
+        self.save_txt = self._parse_bool(self.config.get('save_txt', True))
+        self.save_txt_bb = self._parse_bool(self.config.get('save_txt_bb', False))
         
         # Parse max_images more efficiently
         max_images_val = self.config.get('max_images')
@@ -59,10 +59,10 @@ class ConfigManager:
         self.resume = self._parse_bool(self.config.get('resume', False))
         self.resume_from_image = self.config.get('resume_image_name')
         
-        # If resume_image_name is specified, automatically enable resume mode
-        if self.resume_from_image and not self.resume:
-            self.resume = True
-        print(f"Resume mode automatically enabled due to resume_image_name: {self.resume_from_image}")
+        # # If resume_image_name is specified, automatically enable resume mode
+        # if self.resume_from_image and not self.resume:
+        #     self.resume = True
+        # print(f"Resume mode automatically enabled due to resume_image_name: {self.resume_from_image}")
     
         # Parse submersion time once
         self.submersion_datetime = datetime.strptime(self.submersion_time, "%Y-%m-%d_%H-%M-%S")
