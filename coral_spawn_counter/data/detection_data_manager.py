@@ -3,6 +3,7 @@ import os
 import json
 import time
 import fcntl
+import psutil  # You'll need to add this dependency
 from pathlib import Path
 from datetime import datetime
 
@@ -88,6 +89,88 @@ class DetectionDataManager:
             print(f"Error writing detection file {file_path}: {e}")
             raise
     
+    def _acquire_lock_with_cleanup(self, lock_path, timeout=30):
+        """
+        Acquire lock with automatic cleanup of stale locks.
+        
+        Args:
+            lock_path: Path to the lock file
+            timeout: Maximum time to wait for lock (seconds)
+            
+        Returns:
+            file object or None if lock couldn't be acquired
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Check if lock file exists and if it's stale
+                if os.path.exists(lock_path):
+                    if self._is_stale_lock(lock_path):
+                        print(f"Removing stale lock file: {lock_path}")
+                        try:
+                            os.remove(lock_path)
+                        except OSError:
+                            pass  # File might have been removed by another process
+                
+                # Try to acquire lock
+                lock_file = open(lock_path, 'w')
+                try:
+                    # Try non-blocking lock first
+                    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Write current process ID to lock file
+                    lock_file.write(str(os.getpid()))
+                    lock_file.flush()
+                    return lock_file
+                except BlockingIOError:
+                    # Lock is held by another process
+                    lock_file.close()
+                    time.sleep(0.1)  # Wait a bit before retrying
+                    continue
+                    
+            except Exception as e:
+                print(f"Error acquiring lock {lock_path}: {e}")
+                time.sleep(0.1)
+                continue
+        
+        print(f"Failed to acquire lock {lock_path} within {timeout} seconds")
+        return None
+    
+    def _is_stale_lock(self, lock_path, max_age_seconds=300):
+        """
+        Check if a lock file is stale (old or from dead process).
+        
+        Args:
+            lock_path: Path to the lock file
+            max_age_seconds: Maximum age before considering lock stale
+            
+        Returns:
+            bool: True if lock is stale
+        """
+        try:
+            # Check age of lock file
+            lock_age = time.time() - os.path.getmtime(lock_path)
+            if lock_age > max_age_seconds:
+                return True
+            
+            # Check if process that created lock is still alive
+            try:
+                with open(lock_path, 'r') as f:
+                    pid_str = f.read().strip()
+                    if pid_str.isdigit():
+                        pid = int(pid_str)
+                        if not psutil.pid_exists(pid):
+                            return True
+            except (FileNotFoundError, ValueError, OSError):
+                # Can't read PID or invalid format
+                return True
+            
+            return False
+            
+        except OSError:
+            # Can't access lock file
+            return True
+    
     def update_detection_data(self, timestamp_str, count, model_type):
         """
         Update detection data in JSON file with file locking to prevent race conditions.
@@ -107,60 +190,50 @@ class DetectionDataManager:
            (model_type == "subsurface" and self.mode == "surface"):
             return
         
-        # Use a lock file for synchronization
         lock_path = f"{data_path}.lock"
         
-        try:
-            # Open the lock file - create if it doesn't exist
-            with open(lock_path, 'w') as lock_file:
-                # Acquire an exclusive lock
-                fcntl.flock(lock_file, fcntl.LOCK_EX)
-                
-                try:
-                    # Load current data
-                    if os.path.exists(data_path):
-                        with open(data_path, 'r') as f:
-                            data = json.load(f)
-                    else:
-                        # Initialize if needed
-                        self._initialize_detection_files()
-                        with open(data_path, 'r') as f:
-                            data = json.load(f)
-                    
-                    # Update the data
-                    data["total_detections"] += count
-                    data["last_updated"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    
-                    if timestamp_str in data["detections_by_timestamp"]:
-                        data["detections_by_timestamp"][timestamp_str]["count"] += count
-                        data["detections_by_timestamp"][timestamp_str]["files"] += 1
-                    else:
-                        data["detections_by_timestamp"][timestamp_str] = {
-                            "count": count,
-                            "files": 1
-                        }
-                        data["total_files_processed"] += 1
-                    
-                    # Save updated data
-                    self._write_detection_file(data_path, data)
-                    
-                except (json.JSONDecodeError) as e:
-                    print(f"Error updating detection data file {data_path}: {e}")
-                    # Re-initialize and try again
-                    self._initialize_detection_files()
-                    self.update_detection_data(timestamp_str, count, model_type)
-                
-                # Lock is automatically released when the file is closed
+        # Acquire lock with automatic cleanup
+        lock_file = self._acquire_lock_with_cleanup(lock_path)
+        if lock_file is None:
+            print(f"Could not acquire lock for {data_path}, skipping update")
+            return
         
+        try:
+            # Load current data
+            if os.path.exists(data_path):
+                with open(data_path, 'r') as f:
+                    data = json.load(f)
+            else:
+                self._initialize_detection_files()
+                with open(data_path, 'r') as f:
+                    data = json.load(f)
+            
+            # Update the data
+            data["total_detections"] += count
+            data["last_updated"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            if timestamp_str in data["detections_by_timestamp"]:
+                data["detections_by_timestamp"][timestamp_str]["count"] += count
+                data["detections_by_timestamp"][timestamp_str]["files"] += 1
+            else:
+                data["detections_by_timestamp"][timestamp_str] = {
+                    "count": count,
+                    "files": 1
+                }
+                data["total_files_processed"] += 1
+            
+            # Save updated data
+            self._write_detection_file(data_path, data)
+            
         except Exception as e:
-            print(f"Error with file locking when updating {data_path}: {e}")
+            print(f"Error updating detection data file {data_path}: {e}")
         finally:
-            # Clean up lock file
+            # Always clean up lock
             try:
-                if os.path.exists(lock_path):
-                    os.remove(lock_path)
+                lock_file.close()
+                os.remove(lock_path)
             except OSError:
-                pass  # Ignore cleanup errors
+                pass
     
     def batch_update_detection_data(self, detections_dict, total_count, model_type):
         """

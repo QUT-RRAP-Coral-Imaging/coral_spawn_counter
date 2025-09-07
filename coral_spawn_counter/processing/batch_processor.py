@@ -375,7 +375,7 @@ class BatchProcessor:
         if self.save_txt:
             txt_save_dir = os.path.join(txtsave_dir, rel_path)
             os.makedirs(txt_save_dir, exist_ok=True)
-            self.file_manager.save_txt_predictions_bb(predictions, img_path, txt_save_dir)
+            # self.file_manager.save_txt_predictions_bb(predictions, img_path, txt_save_dir)
             self.file_manager.save_json_predictions_bb(
                 predictions, img_path, txt_save_dir, model_path, classes
             )
@@ -412,7 +412,7 @@ class BatchProcessor:
         # Save text and JSON predictions
         if self.save_txt:
             txt_save_subdir = os.path.join(txtsave_dir, rel_path)
-            self.file_manager.save_txt_predictions_bb(predictions, img_path, txt_save_subdir)
+            # self.file_manager.save_txt_predictions_bb(predictions, img_path, txt_save_subdir)
             self.file_manager.save_json_predictions_bb(
                 predictions, img_path, txt_save_subdir, model_path, classes
             )
