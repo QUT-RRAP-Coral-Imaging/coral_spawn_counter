@@ -10,8 +10,8 @@ from ultralytics import YOLO
 
 class BatchProcessor:
     """Handles batch processing of images for improved efficiency."""
-    
-    def __init__(self, config, model_manager, file_manager, detection_data_manager, time_utils):
+
+    def __init__(self, config, surface_model_manager, subsurface_model_manager, file_manager, detection_data_manager, time_utils):
         """
         Initialize the batch processor.
         
@@ -23,7 +23,8 @@ class BatchProcessor:
             time_utils: TimeUtils instance
         """
         self.config = config
-        self.model_manager = model_manager
+        self.surface_model_manager = surface_model_manager
+        self.subsurface_model_manager = subsurface_model_manager
         self.file_manager = file_manager
         self.detection_data_manager = detection_data_manager
         self.time_utils = time_utils
@@ -91,7 +92,7 @@ class BatchProcessor:
         # Process surface images in batches
         if surface_images:
             print(f"Processing {len(surface_images)} surface images with GPU batching")
-            surface_model_info = self.model_manager.get_model_info("surface")
+            surface_model_info = self.surface_model_manager.get_model_info()
             surface_results = self._process_batch(
                 surface_images, 
                 surface_model_info["model"],
@@ -109,7 +110,7 @@ class BatchProcessor:
         # Process subsurface images in batches
         if subsurface_images:
             print(f"Processing {len(subsurface_images)} subsurface images with GPU batching")
-            subsurface_model_info = self.model_manager.get_model_info("subsurface")
+            subsurface_model_info = self.subsurface_model_manager.get_model_info()
             subsurface_results = self._process_batch(
                 subsurface_images, 
                 subsurface_model_info["model"],
@@ -161,15 +162,15 @@ class BatchProcessor:
             # Create a fresh model instance to avoid thread conflicts
             if is_surface:
                 model = YOLO(self.config.surface_weights_path, verbose=self.verbose).to('cpu')
-                classes = self.model_manager.surface_classes
-                class_colours = self.model_manager.surface_class_colours
+                classes = self.surface_model_manager.surface_classes
+                class_colours = self.surface_model_manager.surface_class_colours
                 imgsave_dir = self.file_manager.surface_imgsave_dir
                 txtsave_dir = self.file_manager.surface_txtsave_dir
                 model_path = self.config.surface_weights_path
             else:
                 model = YOLO(self.config.subsurface_weights_path, verbose=self.verbose).to('cpu')
-                classes = self.model_manager.subsurface_classes
-                class_colours = self.model_manager.subsurface_class_colours
+                classes = self.subsurface_model_manager.subsurface_classes
+                class_colours = self.subsurface_model_manager.subsurface_class_colours
                 imgsave_dir = self.file_manager.subsurface_imgsave_dir
                 txtsave_dir = self.file_manager.subsurface_txtsave_dir
                 model_path = self.config.subsurface_weights_path

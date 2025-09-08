@@ -259,8 +259,8 @@ class CoralSpawnPredictor:
 if __name__ == "__main__":
     
     # Default config file path if not specified
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08.json"
-    
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08_test.json"
+
     # Load and update config with command line arguments
     with open(config_file, 'r') as f:
         import json

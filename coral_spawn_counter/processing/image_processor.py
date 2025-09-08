@@ -9,7 +9,7 @@ from tqdm import tqdm
 class ImageProcessor:
     """Handles sequential processing of individual images."""
     
-    def __init__(self, config, model_manager, file_manager, detection_data_manager, time_utils):
+    def __init__(self, config, surface_model_manager, subsurface_model_manager, file_manager, detection_data_manager, time_utils):
         """
         Initialize the image processor.
         
@@ -21,7 +21,8 @@ class ImageProcessor:
             time_utils: TimeUtils instance
         """
         self.config = config
-        self.model_manager = model_manager
+        self.surface_model_manager = surface_model_manager
+        self.subsurface_model_manager = subsurface_model_manager
         self.file_manager = file_manager
         self.detection_data_manager = detection_data_manager
         self.time_utils = time_utils
@@ -60,7 +61,11 @@ class ImageProcessor:
         
         # Get the appropriate model and related information
         try:
-            model, classes, class_colours, model_path = self.model_manager.get_model_for_image(is_surface)
+            if is_surface:
+                model, classes, class_colours, model_path = self.surface_model_manager.model, self.surface_model_manager.classes, self.surface_model_manager.class_colours, self.surface_model_manager.weights_path
+            else:
+                model, classes, class_colours, model_path = self.subsurface_model_manager.model, self.subsurface_model_manager.classes, self.subsurface_model_manager.class_colours, self.subsurface_model_manager.weights_path
+            # model, classes, class_colours, model_path = self.get_model_for_image(is_surface)
         except ValueError as e:
             print(f"Error getting model for image {img_path}: {e}")
             return 0, "error"
