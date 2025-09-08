@@ -1,0 +1,12 @@
+{
+    "tank_sheet_name": "DEC23 T4 Alor",
+    "cslics_uuid": "cslics01",
+    "invalid_ranges": [
+        {
+            "start": "cslics01_20231205_234344_838548_img.jpg",
+            "end": "cslics01_20231205_234356_855168_img.jpg"
+        }
+    ],
+    
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

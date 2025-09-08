@@ -39,14 +39,16 @@ class CoralSpawnConfig:
     aggregate_size: int = 100
     confidence_threshold: float = 0.3
     MAX_SAMPLE: int = 2000
-    calibration_window_size: int = 1
-    calibration_idx: int = 8
-    calibration_window_shift: int = 0
     
-    # Display options
-    PLOT_FOCUS_VOLUME: bool = False
-    SHOW_INVALID_POINTS: bool = True
-
+    # Surface-specific calibration parameters
+    surface_calibration_idx: int = 0
+    surface_calibration_window_size: int = 1
+    surface_calibration_window_shift: int = 0
+    
+    # Subsurface-specific calibration parameters
+    subsurface_calibration_idx: int = 0
+    subsurface_calibration_window_size: int = 1
+    subsurface_calibration_window_shift: int = 0
 
 class PlotConfigManager:
     """Manager for loading and validating coral spawn counter plot configurations."""
@@ -95,7 +97,8 @@ class PlotConfigManager:
             'cslics_uuid', 'coral_species', 'cslics_associations_file',
             'surface_weights_path', 'subsurface_weights_path', 
             'base_detection_dir', 'surface_detection_dir', 'subsurface_detection_dir',
-            'save_manual_plot_dir', 'invalid_ranges_file', 'submersion_time', 'mode'
+            'save_manual_plot_dir', 'invalid_ranges_file', 'submersion_time', 'mode',
+            'verbose', 'skipping_frequency', 'aggregate_size', 'confidence_threshold', 'MAX_SAMPLE'
         ]
         
         missing_fields = [field for field in required_fields if field not in config_data]
@@ -234,6 +237,50 @@ class PlotConfigManager:
             raise ValueError("No configuration loaded.")
         
         return Path(self.config.subsurface_weights_path).stem
+    
+    # Surface calibration parameter getters
+    def get_surface_calibration_idx(self) -> int:
+        """Get surface calibration index."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.surface_calibration_idx
+    
+    def get_surface_calibration_window_size(self) -> int:
+        """Get surface calibration window size."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.surface_calibration_window_size
+    
+    def get_surface_calibration_window_shift(self) -> int:
+        """Get surface calibration window shift."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.surface_calibration_window_shift
+    
+    # Subsurface calibration parameter getters
+    def get_subsurface_calibration_idx(self) -> int:
+        """Get subsurface calibration index."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.subsurface_calibration_idx
+    
+    def get_subsurface_calibration_window_size(self) -> int:
+        """Get subsurface calibration window size."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.subsurface_calibration_window_size
+    
+    def get_subsurface_calibration_window_shift(self) -> int:
+        """Get subsurface calibration window shift."""
+        if self.config is None:
+            raise ValueError("No configuration loaded.")
+        
+        return self.config.subsurface_calibration_window_shift
     
     def __str__(self) -> str:
         """String representation of the configuration."""

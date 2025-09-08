@@ -94,18 +94,32 @@ class CoralSpawnCounter:
             show_plot: Whether to display plots interactively
             
         Returns:
-            dict: Manual counts data
+            dict: Manual counts dictionary with keys: counts, std, decimal_days, counts_time, camera_uuid, species
         """
         print("Processing manual counts...")
         self.manual_data = self.manual_processor.process_all_manual_counts(show_plot=show_plot)
         
-        if self.manual_data:
-            # Calculate nearest day for time reference
-            counts_time = self.manual_data['counts_time']
-            self.nearest_day = counts_time[0].replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            print(f"Manual counts processed successfully. Reference day: {self.nearest_day}")
+        if self.manual_data is not None and isinstance(self.manual_data, dict):
+            if 'counts' in self.manual_data and len(self.manual_data['counts']) > 0:
+                # Calculate nearest day for time reference
+                counts_time = self.manual_data['counts_time']
+                if isinstance(counts_time[0], datetime):
+                    self.nearest_day = counts_time[0].replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                else:
+                    # If counts_time is already in decimal days, we need the nearest_day from elsewhere
+                    # For now, assume it's the first day
+                    self.nearest_day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                print(f"Manual counts processed successfully. Reference day: {self.nearest_day}")
+                print(f"Manual data keys: {list(self.manual_data.keys())}")
+                print(f"Manual counts: {len(self.manual_data['counts'])} data points")
+                print(f"Camera UUID: {self.manual_data.get('camera_uuid', 'N/A')}")
+                print(f"Species: {self.manual_data.get('species', 'N/A')}")
+            else:
+                print("Manual counts dictionary is empty or missing 'counts' key.")
+                return None
         else:
-            print("Failed to process manual counts.")
+            print("Failed to process manual counts or unexpected data type.")
+            return None
             
         return self.manual_data
 
@@ -439,26 +453,44 @@ class CoralSpawnCounter:
         Returns:
             dict: Analysis results
         """
-        if not self.manual_data or not self.nearest_day:
+        # Check if manual data is available (expecting dictionary)
+        if (not isinstance(self.manual_data, dict)):
             raise ValueError("Manual counts must be processed first. Call process_manual_counts().")
             
         print("Processing subsurface detections...")
         
+        # Extract arrays from manual data dictionary
+        manual_counts = self.manual_data['counts']
+        manual_std = self.manual_data['std']
+        manual_times = self.manual_processor.convert_to_decimal_days(
+            self.manual_data['counts_time'], self.nearest_day
+        )
+        
+        # Create batch histogram directory
+        batch_histogram_dir = os.path.join(
+            self.config.base_detection_dir, 
+            self.config.cslics_uuid, 
+            'plots', 
+            'batch_histogram'
+        )
+        os.makedirs(batch_histogram_dir, exist_ok=True)
+        
         # Run full subsurface analysis using tank plotter
         results = self.tank_plotter.run_full_analysis(
             det_dir=self.config_manager.get_subsurface_detection_dir(),
-            manual_counts=self.manual_data['counts'],
-            manual_std=self.manual_data['std'],
-            manual_times=self.manual_processor.convert_to_decimal_days(
-                self.manual_data['counts_time'], self.nearest_day
-            ),
+            manual_counts=manual_counts,
+            manual_std=manual_std,
+            manual_times=manual_times,
             nearest_day=self.nearest_day,
             invalid_indices=None,  # temporary disable invalid times
-            show_plots=show_plots
+            show_plots=show_plots,
+            batch_histogram_dir=batch_histogram_dir,
+            detection_type='subsurface'
         )
         
         if results:
             print("Subsurface detection analysis completed successfully.")
+            print(f"Batch histograms saved to: {batch_histogram_dir}")
         else:
             print("Failed to process subsurface detections.")
             
@@ -489,10 +521,18 @@ class CoralSpawnCounter:
             print(f"Tank: {self.config.tank_sheet_name}")
             print(f"Surface Detection Dir: {self.config_manager.get_surface_detection_dir()}")
             print(f"Subsurface Detection Dir: {self.config_manager.get_subsurface_detection_dir()}")
+            
+            # Print calibration parameters
+            print(f"Surface Calibration - Index: {self.config_manager.get_surface_calibration_idx()}, "
+                  f"Window Size: {self.config_manager.get_surface_calibration_window_size()}, "
+                  f"Window Shift: {self.config_manager.get_surface_calibration_window_shift()}")
+            print(f"Subsurface Calibration - Index: {self.config_manager.get_subsurface_calibration_idx()}, "
+                  f"Window Size: {self.config_manager.get_subsurface_calibration_window_size()}, "
+                  f"Window Shift: {self.config_manager.get_subsurface_calibration_window_shift()}")
             print("="*60)
             
             manual_data = self.process_manual_counts(show_plot=show_plots)
-            if not manual_data:
+            if manual_data is None:
                 raise ValueError("Failed to process manual counts.")
             results['manual_data'] = manual_data
             
@@ -504,18 +544,43 @@ class CoralSpawnCounter:
                 surface_df = self.process_surface_detections(show_plots=show_plots)
                 results['surface_data'] = surface_df
 
-                # Plot surface tank estimates
-                
-                class_names = self.get_class_names('surface')
-                times_hours, total_counts, total_std = self.tank_plotter.surface_tank_estimate(surface_df, class_names, show_plots)
-
-
+                # Plot surface tank estimates with manual data
+                if surface_df is not None:
+                    class_names = self.get_class_names('surface')
+                    
+                    # Extract manual data for surface tank estimate (dictionary)
+                    manual_counts = manual_data['counts']
+                    manual_std = manual_data['std']
+                    manual_times = manual_data['counts_time']
+                    
+                    # Add submersion_time and surface calibration parameters to tank plotter
+                    if hasattr(self.config, 'submersion_time'):
+                        self.tank_plotter.submersion_time = self.config.submersion_time
+                    
+                    # Set surface calibration parameters
+                    self.tank_plotter.surface_calibration_idx = self.config_manager.get_surface_calibration_idx()
+                    self.tank_plotter.surface_calibration_window_size = self.config_manager.get_surface_calibration_window_size()
+                    self.tank_plotter.surface_calibration_window_shift = self.config_manager.get_surface_calibration_window_shift()
+                    
+                    times_hours, total_counts_scaled, scale_factor = self.tank_plotter.surface_tank_estimate(
+                        surface_df, class_names, manual_counts, manual_std, manual_times, 
+                        self.nearest_day, show_plots, apply_calibration=True, 
+                        calibration_idx=self.config_manager.get_surface_calibration_idx()
+                    )
+                    
+                    print(f"Surface tank estimate completed with scale factor: {scale_factor:.4f}")
     
             # Process subsurface detections
             if include_subsurface:
                 print("\n" + "-"*40)
                 print("SUBSURFACE DETECTION ANALYSIS")
                 print("-"*40)
+                
+                # Set subsurface calibration parameters
+                self.tank_plotter.subsurface_calibration_idx = self.config_manager.get_subsurface_calibration_idx()
+                self.tank_plotter.subsurface_calibration_window_size = self.config_manager.get_subsurface_calibration_window_size()
+                self.tank_plotter.subsurface_calibration_window_shift = self.config_manager.get_subsurface_calibration_window_shift()
+                
                 subsurface_results = self.process_subsurface_detections(show_plots=show_plots)
                 results['subsurface_results'] = subsurface_results
             
@@ -530,6 +595,7 @@ class CoralSpawnCounter:
             
         except Exception as e:
             print(f"Error in full analysis: {e}")
+            traceback.print_exc()
             return results
 
     def print_analysis_summary(self, results):
@@ -542,8 +608,9 @@ class CoralSpawnCounter:
         print("\nANALYSIS SUMMARY:")
         print("-" * 30)
         
-        if 'manual_data' in results and results['manual_data']:
-            manual_count = len(results['manual_data']['counts'])
+        if 'manual_data' in results and results['manual_data'] is not None:
+            # Handle dictionary only
+            manual_count = len(results['manual_data'].get('counts', []))
             print(f"Manual counts processed: {manual_count} data points")
         
         if 'subsurface_results' in results and results['subsurface_results']:
@@ -562,13 +629,15 @@ class CoralSpawnCounter:
         # Update output directory paths to match coral_spawn_predictor.py structure
         plots_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'plots')
         data_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'data')
+        batch_histogram_dir = os.path.join(plots_dir, 'batch_histogram')
         
         print(f"\nOutput directories:")
         print(f"  Plots: {plots_dir}")
+        print(f"  Batch Histograms: {batch_histogram_dir}")
         print(f"  Data: {data_dir}")
         print(f"Surface detection directory: {self.config_manager.get_surface_detection_dir()}")
         print(f"Subsurface detection directory: {self.config_manager.get_subsurface_detection_dir()}")
-    
+
     def get_config_summary(self):
         """Get a summary of the current configuration."""
         return self.manual_processor.get_config_summary()
@@ -577,7 +646,7 @@ class CoralSpawnCounter:
 # Example usage and main execution
 if __name__ == "__main__":
     # Configuration file path
-    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plot_config_202312_t4_alor_cslics08.json"
+    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plot_config_202312_t4_alor_cslics01.json"
     
     try:
         # Initialize the coral spawn counter

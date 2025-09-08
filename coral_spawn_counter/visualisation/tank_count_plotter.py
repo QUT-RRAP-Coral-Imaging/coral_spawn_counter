@@ -20,63 +20,159 @@ class TankCountPlotter:
     
     def __init__(self, config_manager: PlotConfigManager):
         """
-        Initialize with a configuration manager.
+        Initialize the tank count plotter with configuration.
         
         Args:
-            config_manager: PlotConfigManager instance with loaded configuration
+            config_manager: PlotConfigManager instance containing configuration
         """
         self.config_manager = config_manager
-        self.config = config_manager.get_config()
+        self.config = config_manager.config
         
-        # Set up convenience attributes from config
-        self.save_det_dir = self.config_manager.get_detection_dir()
-        self.tank_sheet_name = self.config.tank_sheet_name
+        # Plotting configuration
         self.cslics_uuid = self.config.cslics_uuid
         self.coral_species = self.config.coral_species
+        self.tank_sheet_name = self.config.tank_sheet_name
         self.skipping_frequency = self.config.skipping_frequency
         self.aggregate_size = self.config.aggregate_size
         self.confidence_threshold = self.config.confidence_threshold
         self.MAX_SAMPLE = self.config.MAX_SAMPLE
-        self.calibration_window_size = self.config.calibration_window_size
-        self.calibration_idx = self.config.calibration_idx
-        self.calibration_window_shift = self.config.calibration_window_shift
-        self.PLOT_FOCUS_VOLUME = self.config.PLOT_FOCUS_VOLUME
-        self.SHOW_INVALID_POINTS = self.config.SHOW_INVALID_POINTS
         
-        # Add SHOW as a class property (default to False for batch processing)
-        self.SHOW = False
+        # Surface calibration parameters
+        self.surface_calibration_idx = getattr(self.config, 'surface_calibration_idx', 0)
+        self.surface_calibration_window_size = getattr(self.config, 'surface_calibration_window_size', 1)
+        self.surface_calibration_window_shift = getattr(self.config, 'surface_calibration_window_shift', 0)
         
-        # Add batch histogram directory attribute
-        self.batch_histogram_dir = None
+        # Subsurface calibration parameters  
+        self.subsurface_calibration_idx = getattr(self.config, 'subsurface_calibration_idx', 0)
+        self.subsurface_calibration_window_size = getattr(self.config, 'subsurface_calibration_window_size', 1)
+        self.subsurface_calibration_window_shift = getattr(self.config, 'subsurface_calibration_window_shift', 0)
+        
+        # Detection processing parameters
+        self.SHOW_INVALID_POINTS = False
+        self.PLOT_FOCUS_VOLUME = False
+        self.save_det_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, "plots")
+        os.makedirs(self.save_det_dir, exist_ok=True)
+        self.batch_histogram_dir = os.path.join(self.save_det_dir, "batch_histograms")
+        os.makedirs(self.batch_histogram_dir, exist_ok=True)
+        self.submersion_time = getattr(self.config, 'submersion_time', None)
 
-    @classmethod
-    def from_config_file(cls, config_path: str):
+    def surface_calibration(self, batched_surface_counts, batched_surface_times, manual_counts, manual_times, calibration_idx=None):
         """
-        Create TankCountPlotter from configuration file.
+        Calculate calibration scale factor between manual counts and surface AI counts.
         
         Args:
-            config_path: Path to JSON configuration file
+            batched_surface_counts: Array of batched surface detection counts
+            batched_surface_times: Array of batched surface detection times (hours since spawning)
+            manual_counts: List/array of manual counts from dictionary
+            manual_times: List/array of manual times (hours since spawning) from dictionary
+            calibration_idx: Index of manual count to use for calibration (uses surface_calibration_idx if None)
             
         Returns:
-            TankCountPlotter instance
+            float: Scale factor to multiply surface counts by to match manual count
         """
-        config_manager = PlotConfigManager(config_path)
-        return cls(config_manager)
+        # Use surface-specific calibration index if not provided
+        if calibration_idx is None:
+            calibration_idx = self.surface_calibration_idx
+            
+        # Convert to numpy arrays for consistent processing
+        batched_surface_counts = np.array(batched_surface_counts) if batched_surface_counts is not None else np.array([])
+        batched_surface_times = np.array(batched_surface_times) if batched_surface_times is not None else np.array([])
+        manual_counts = np.array(manual_counts) if manual_counts is not None else np.array([])
+        manual_times = np.array(manual_times) if manual_times is not None else np.array([])
+        
+        # Check if we have valid data
+        if len(batched_surface_counts) == 0 or len(manual_counts) == 0:
+            print("Error: No surface counts or manual counts provided for calibration")
+            return 1.0
+        
+        if calibration_idx >= len(manual_counts):
+            print(f"Error: Surface calibration index {calibration_idx} exceeds manual counts length {len(manual_counts)}")
+            return 1.0
+        
+        # Get the manual count and time for calibration
+        target_manual_count = manual_counts[calibration_idx]
+        target_manual_time = manual_times[calibration_idx]
+        
+        print(f"Surface calibration using manual count index {calibration_idx}")
+        print(f"Surface calibration window size: {self.surface_calibration_window_size}")
+        print(f"Surface calibration window shift: {self.surface_calibration_window_shift}")
+        print(f"Target manual count: {target_manual_count} at time {target_manual_time:.2f} hours")
+        
+        # Apply window shift and size for surface calibration
+        # This could be used to average over multiple surface detection points
+        # Find the closest surface detection time to the manual calibration time
+        time_differences = np.abs(batched_surface_times - target_manual_time)
+        closest_surface_idx = np.argmin(time_differences)
+        
+        # Apply window around the closest point
+        window_start = max(0, closest_surface_idx - self.surface_calibration_window_shift)
+        window_end = min(len(batched_surface_counts), window_start + self.surface_calibration_window_size)
+        
+        # Calculate average over the window
+        window_counts = batched_surface_counts[window_start:window_end]
+        window_times = batched_surface_times[window_start:window_end]
+        
+        if len(window_counts) > 0:
+            avg_surface_count = np.mean(window_counts)
+            avg_surface_time = np.mean(window_times)
+        else:
+            avg_surface_count = batched_surface_counts[closest_surface_idx]
+            avg_surface_time = batched_surface_times[closest_surface_idx]
+        
+        time_diff = abs(avg_surface_time - target_manual_time)
+        print(f"Surface detection window: {len(window_counts)} points, avg count: {avg_surface_count:.2f} at time {avg_surface_time:.2f} hours")
+        print(f"Time difference: {time_diff:.2f} hours")
+        
+        # Calculate scale factor
+        if avg_surface_count > 0:
+            scale_factor = target_manual_count / avg_surface_count
+        else:
+            print("Warning: Average surface count is 0, cannot calculate scale factor. Using 1.0")
+            scale_factor = 1.0
+        
+        print(f"Calculated surface scale factor: {scale_factor:.4f}")
+        print(f"Scaled surface count would be: {avg_surface_count * scale_factor:.2f}")
+        
+        return scale_factor
 
-    def convert_to_decimal_days(self, dates_list, time_zero=None):
+    def scale_by_manual_calibration_idx(self, manual_count, image_counts, closest_idx):
         """
-        Convert datetime objects to decimal days relative to a reference time.
+        Scale image counts using manual calibration - updated for subsurface calibration parameters.
         
         Args:
-            dates_list: List of datetime objects
-            time_zero: Reference time (if None, uses first date in list)
+            manual_count: Manual count value at calibration point
+            image_counts: Array of image detection counts
+            closest_idx: Index of closest image detection to manual count time
             
         Returns:
-            list: Decimal days relative to time_zero
+            float: Scale factor
         """
-        if time_zero is None:
-            time_zero = dates_list[0]
-        return [(date - time_zero).total_seconds() / (60 * 60 * 24) for date in dates_list]
+        print(f"Subsurface calibration using index {closest_idx}")
+        print(f"Subsurface calibration window size: {self.subsurface_calibration_window_size}")
+        print(f"Subsurface calibration window shift: {self.subsurface_calibration_window_shift}")
+        
+        # Apply window shift and size for subsurface calibration
+        window_start = max(0, closest_idx - self.subsurface_calibration_window_shift)
+        window_end = min(len(image_counts), window_start + self.subsurface_calibration_window_size)
+        
+        # Calculate average over the window
+        window_counts = image_counts[window_start:window_end]
+        
+        if len(window_counts) > 0:
+            avg_image_count = np.mean(window_counts)
+            print(f"Subsurface detection window: {len(window_counts)} points, avg count: {avg_image_count:.2f}")
+        else:
+            avg_image_count = image_counts[closest_idx]
+            print(f"Using single subsurface detection: {avg_image_count:.2f}")
+        
+        if avg_image_count > 0:
+            scale_factor = manual_count / avg_image_count
+        else:
+            print("Warning: Average subsurface count is 0, cannot calculate scale factor. Using 1.0")
+            scale_factor = 1.0
+        
+        print(f"Calculated subsurface scale factor: {scale_factor:.4f}")
+        return scale_factor
 
     def read_detections(self, det_dir):
         """
@@ -169,6 +265,21 @@ class TankCountPlotter:
         decimal_capture_times = self.convert_to_decimal_days(batched_time, nearest_day)
         return np.array(batched_image_count), np.array(batched_std), np.array(decimal_capture_times), batched_invalid_indices
 
+    def convert_to_decimal_days(self, dates_list, time_zero=None):
+        """
+        Convert datetime objects to decimal days relative to a reference time.
+        
+        Args:
+            dates_list: List of datetime objects
+            time_zero: Reference time (if None, uses first date in list)
+            
+        Returns:
+            list: Decimal days relative to time_zero
+        """
+        if time_zero is None:
+            time_zero = dates_list[0]
+        return [(date - time_zero).total_seconds() / (60 * 60 * 24) for date in dates_list]
+    
     def set_batch_histogram_dir(self, batch_histogram_dir):
         """
         Set the directory for saving batch histogram plots.
@@ -196,19 +307,9 @@ class TankCountPlotter:
         plt.ylabel('Frequency')
         plt.title(f'Histogram of Batch Counts (Batch {batch_idx + 1})')
         plt.grid(True)
-
-        # Determine output directory - use batch_histogram_dir if set, otherwise create one
-        if self.batch_histogram_dir:
-            output_dir = self.batch_histogram_dir
-        else:
-            # Create batch_histogram subdirectory in the main save directory
-            output_dir = os.path.join(self.save_det_dir, 'batch_histogram')
-        
-        # Ensure output directory exists
-        os.makedirs(output_dir, exist_ok=True)
         
         # Save the plot
-        output_path = os.path.join(output_dir, f'Batch_{batch_idx + 1}_Histogram.png')
+        output_path = os.path.join(self.batch_histogram_dir, f'Batch_{batch_idx + 1}_Histogram.png')
         plt.savefig(output_path, dpi=600)
         print(f"Histogram for Batch {batch_idx + 1} saved to {output_path}")
 
@@ -235,9 +336,6 @@ class TankCountPlotter:
         plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid}')
         plt.legend()
         
-        # Ensure output directory exists
-        os.makedirs(self.save_det_dir, exist_ok=True)
-        
         output_path = os.path.join(self.save_det_dir, f'Image_counts_{self.tank_sheet_name}.png')
         plt.savefig(output_path)
         print(f"Image detections plot saved to {output_path}")
@@ -245,7 +343,7 @@ class TankCountPlotter:
             plt.show()
         plt.close()
             
-    def find_closest_time(self, image_time, manual_time, manual_idx=None):
+    def find_closest_time(self, image_time, manual_time, manual_idx=None, detection_type='surface'):
         """
         Find the closest time match between image and manual times.
         
@@ -258,7 +356,10 @@ class TankCountPlotter:
             tuple: (closest_index, minimum_time_difference)
         """
         if manual_idx is None:
-            manual_idx = self.calibration_idx
+            if detection_type == 'surface':
+                manual_idx = self.surface_calibration_idx
+            else:
+                manual_idx = self.subsurface_calibration_idx    
         t_diff = abs(image_time - manual_time[manual_idx])
         return np.argmin(t_diff), np.min(t_diff)
 
@@ -273,7 +374,7 @@ class TankCountPlotter:
         # This is a placeholder - you'll need to implement the actual focus volume calculation
         return 1.0
 
-    def scale_by_manual_calibration_idx(self, manual_count, image_counts, closest_idx):
+    def scale_by_manual_calibration_idx(self, manual_count, image_counts, closest_idx, calibration_window_size=None, calibration_window_shift=None):
         """
         Determine scale factor for image_counts based on manual_counts and calibration_idx.
         
@@ -286,19 +387,19 @@ class TankCountPlotter:
             tuple: (scale_factor, selected_index)
         """
         # Added due to some potential calibration times lining up with "night" conditions
-        idx_select = closest_idx + self.calibration_window_shift
+        idx_select = closest_idx + calibration_window_shift
         
         # Find the idx for the nearest time to the specified calibration manual time
         # accounting for min/max sizes of image_counts
-        idx_min = int(idx_select - self.calibration_window_size/2)
+        idx_min = int(idx_select - calibration_window_size/2)
         if idx_min < 0:
             idx_min = 0
-            if len(image_counts) <= self.calibration_window_size:
+            if len(image_counts) <= calibration_window_size:
                 idx_max = len(image_counts) - 1
             else:
-                idx_max = self.calibration_window_size
+                idx_max = calibration_window_size
         else:
-            idx_max = int(idx_min + self.calibration_window_size)
+            idx_max = int(idx_min + calibration_window_size)
         if idx_max >= len(image_counts):
             idx_max = len(image_counts) - 1
             
@@ -355,7 +456,7 @@ class TankCountPlotter:
             # Not enough valid points for interpolation, return only valid points
             return valid_times, valid_counts, valid_std, np.zeros(len(valid_times), dtype=bool)
 
-    def process_and_scale_counts(self, image_counts, image_std, image_times, manual_counts, manual_std, manual_times):
+    def process_and_scale_counts(self, image_counts, image_std, image_times, manual_counts, manual_std, manual_times, detection_type='surface'):
         """
         Process and scale image counts using focus volume and manual calibration.
 
@@ -370,6 +471,16 @@ class TankCountPlotter:
         Returns:
             tuple: ((tank_counts_def, tank_std_def), (tank_counts_cal, tank_std_cal), scaling_idx)
         """
+        
+        if detection_type == 'surface':
+            calibration_idx = self.surface_calibration_idx
+            calibration_window_size = self.surface_calibration_window_size
+            calibration_window_shift = self.surface_calibration_window_shift
+        else:
+            calibration_idx = self.subsurface_calibration_idx
+            calibration_window_size = self.subsurface_calibration_window_size
+            calibration_window_shift = self.subsurface_calibration_window_shift
+            
         # Scale factor by focus volume
         scale_factor_focus = self.scale_by_focus_volume()
 
@@ -382,7 +493,7 @@ class TankCountPlotter:
 
         # Scale factor by manual calibration
         scale_factor_manual, scaling_idx = self.scale_by_manual_calibration_idx(
-            manual_counts[self.calibration_idx], image_counts, closest_idx
+            manual_counts[calibration_idx], image_counts, closest_idx, calibration_window_size, calibration_window_shift    
         )
 
         # Apply scale factor to image counts
@@ -403,7 +514,8 @@ class TankCountPlotter:
         manual_times, 
         scaling_idx, 
         batched_invalid_indices,
-        plot_label):
+        plot_label,
+        detection_type='surface'):
         """
         Plot AI detections and manual counts, highlighting invalid points with red, or having them removed and interpolated.
         Interpolated points are shown in orange.
@@ -420,6 +532,7 @@ class TankCountPlotter:
             scaling_idx: Index of the scaling point.
             batched_invalid_indices: List of invalid indices mapped to batches.
             plot_label: A string to differentiate the plot (used in title and filename).
+            detection_
         """
         n = 0.5
         fig, ax = plt.subplots()
@@ -494,8 +607,13 @@ class TankCountPlotter:
         ax.errorbar(manual_times, manual_counts, yerr=n * manual_std, fmt='o', color='orange', alpha=0.5)
 
         # Highlight calibration points if they exist in the plot data
-        calibration_manual_time = manual_times[self.calibration_idx]
-        ax.plot(calibration_manual_time, manual_counts[self.calibration_idx], 
+        if detection_type == 'surface':
+            calibration_idx = self.surface_calibration_idx
+        else:
+            calibration_idx = self.subsurface_calibration_idx
+            
+        calibration_manual_time = manual_times[calibration_idx]
+        ax.plot(calibration_manual_time, manual_counts[calibration_idx], 
                 marker='*', markersize=10, color='red', label='calibration')
         
         # Only show shifted calibration point if it's in the plot data
@@ -516,7 +634,7 @@ class TankCountPlotter:
         
         # Ensure output directory exists
         os.makedirs(self.save_det_dir, exist_ok=True)
-        
+
         output_path = os.path.join(self.save_det_dir, f'Combined_tank_counts_{self.tank_sheet_name}_{self.cslics_uuid}_{plot_label}.png')
         plt.savefig(output_path, dpi=600)
         print(f'Plot saved to {output_path}')
@@ -629,7 +747,16 @@ class TankCountPlotter:
         
         print(f"Error data saved to {error_output_path}")
 
-    def run_full_analysis(self, det_dir, manual_counts, manual_std, manual_times, nearest_day, invalid_indices=None, show_plots=False, batch_histogram_dir=None):
+    def run_full_analysis(self, 
+                          det_dir, 
+                          manual_counts, 
+                          manual_std, 
+                          manual_times, 
+                          nearest_day, 
+                          invalid_indices=None, 
+                          show_plots=False, 
+                          batch_histogram_dir=None, 
+                          detection_type='surface'):
         """
         Run the complete analysis pipeline.
         
@@ -666,15 +793,13 @@ class TankCountPlotter:
         
         # Process and scale counts
         (tank_counts_def, tank_std_def), (tank_counts_cal, tank_std_cal), scaling_idx = self.process_and_scale_counts(
-            image_counts, image_std, image_times, manual_counts, manual_std, manual_times
-        )
+            image_counts, image_std, image_times, manual_counts, manual_std, manual_times, detection_type)
         
         # Plot combined results
         self.plot_detections_and_manual_counts(
             image_times, tank_counts_def, tank_std_def, tank_counts_cal, tank_std_cal,
             manual_counts, manual_std, manual_times, scaling_idx, batched_invalid_indices,
-            "combined"
-        )
+            "combined", detection_type)
         
         # Plot error analysis
         manual_times_error, errors = self.plot_error_between_manual_and_ai(
@@ -700,24 +825,35 @@ class TankCountPlotter:
         #     return None
 
 
-    def surface_tank_estimate(self, surface_df, class_names, show_plots=False):
+    def surface_tank_estimate(self, surface_df, class_names, manual_counts, manual_std, manual_times, nearest_day, show_plots=False, apply_calibration=True, calibration_idx=0):
         """
         Process surface detection DataFrame to create tank estimates by summing all classes except 'Damaged'.
-        Uses batched approach similar to subsurface processing.
+        Uses batched approach similar to subsurface processing and applies calibration scaling.
         
         Args:
             surface_df: pandas DataFrame with detection data (from process_surface_detections)
             class_names: List of class names (index corresponds to class ID)
+            manual_counts: List/array of manual counts from dictionary
+            manual_std: List/array of manual standard deviations from dictionary
+            manual_times: List of datetime objects from dictionary
+            nearest_day: Reference datetime for calculating hours since spawning
             show_plots: Whether to display the plot interactively
+            apply_calibration: Whether to apply calibration scaling (default: True)
+            calibration_idx: Index of manual count to use for calibration (default: 0)
             
         Returns:
-            tuple: (batched_times_hours, batched_total_counts, batched_std) - batched times, counts, and standard deviations
+            tuple: (batched_times_hours, batched_total_counts_scaled, scale_factor) - batched times, scaled counts, and scale factor
         """
         print("Processing surface detection DataFrame for batched tank estimation...")
         
         if surface_df is None or surface_df.empty:
             print("No surface detection data provided")
             return None, None, None
+        
+        # Convert to standard Python lists/arrays (manual data comes from dictionary)
+        manual_counts = list(manual_counts) if manual_counts is not None else []
+        manual_std = list(manual_std) if manual_std is not None else []
+        manual_times = list(manual_times) if manual_times is not None else []
         
         # Find the index of the 'Damaged' class to exclude it
         damaged_class_idx = None
@@ -796,29 +932,86 @@ class TankCountPlotter:
                 batched_std = batched_std[:self.MAX_SAMPLE]
                 batched_times_hours = batched_times_hours[:self.MAX_SAMPLE]
         
-        # Create the plot
-        self.plot_surface_tank_estimate(batched_times_hours, batched_total_counts, batched_std, 
-                                       class_names, damaged_class_idx, show_plots)
+        # Convert manual times to hours since spawning
+        manual_times_hours = []
+        if len(manual_times) > 0:
+            # Check if manual_times contains datetime objects or numeric values
+            if isinstance(manual_times[0], datetime):
+                # Convert datetime objects to hours since spawning
+                for dt in manual_times:
+                    hours_since = (dt - nearest_day).total_seconds() / 3600
+                    manual_times_hours.append(hours_since)
+            else:
+                # Assume manual_times are already in decimal days or similar format
+                # Convert from decimal days to hours since spawning
+                for decimal_day in manual_times:
+                    if isinstance(decimal_day, (int, float)):
+                        # Convert decimal days to hours (decimal_day * 24 hours)
+                        # Subtract the nearest_day decimal representation
+                        nearest_day_decimal = nearest_day.timestamp() / (24 * 3600 * 1000)  # Convert to decimal days
+                        hours_since = (decimal_day - nearest_day_decimal) * 24
+                        manual_times_hours.append(hours_since)
+                    else:
+                        print(f"Warning: Unexpected manual time format: {type(decimal_day)}")
+                        manual_times_hours.append(0)
+        
+        print(f"Converted {len(manual_times)} manual times to hours since spawning")
+        if manual_times_hours:
+            print(f"Manual time range: {min(manual_times_hours):.1f} to {max(manual_times_hours):.1f} hours")
+        
+        # Apply calibration if requested
+        scale_factor = 1.0
+        if apply_calibration and len(batched_total_counts) > 0 and len(manual_counts) > calibration_idx:
+            scale_factor = self.surface_calibration(
+                batched_total_counts, batched_times_hours, 
+                manual_counts, manual_times_hours, calibration_idx
+            )
+        
+        # Apply scaling to counts and std
+        batched_total_counts_scaled = [count * scale_factor for count in batched_total_counts]
+        batched_std_scaled = [std * scale_factor for std in batched_std]
+        
+        # Create the plot with manual counts
+        self.plot_surface_tank_estimate(
+            batched_times_hours, batched_total_counts_scaled, batched_std_scaled, 
+            manual_counts, manual_std, manual_times_hours, nearest_day,
+            class_names, damaged_class_idx, show_plots, scale_factor
+        )
         
         print(f"Processed {len(surface_df)} surface detection data points into {len(batched_total_counts)} batches")
         if batched_times_hours:
             print(f"Batched time range: {min(batched_times_hours):.1f} to {max(batched_times_hours):.1f} hours since spawning")
-        if batched_total_counts:
-            print(f"Batched count range: {min(batched_total_counts):.1f} to {max(batched_total_counts):.1f} detections")
+        if batched_total_counts_scaled:
+            print(f"Scaled count range: {min(batched_total_counts_scaled):.1f} to {max(batched_total_counts_scaled):.1f} detections")
         
-        return batched_times_hours, batched_total_counts, batched_std
+        return batched_times_hours, batched_total_counts_scaled, scale_factor
 
-    def plot_surface_tank_estimate(self, times_hours, total_counts, total_std, class_names, damaged_class_idx, show_plots=False):
+    def plot_surface_tank_estimate(self, 
+                                   times_hours, 
+                                   total_counts, 
+                                   total_std, 
+                                   manual_counts, 
+                                   manual_std, 
+                                   manual_times_hours, 
+                                   nearest_day, 
+                                   class_names, 
+                                   damaged_class_idx, 
+                                   show_plots=False, scale_factor=1.0):
         """
-        Plot surface tank estimates over time with upper/lower bounds and fill_between, matching subsurface plot style.
+        Plot surface tank estimates over time with manual counts up to submersion time.
         
         Args:
             times_hours: Array of batched times in hours since spawning
-            total_counts: Array of batched total detection counts (excluding damaged)
-            total_std: Array of standard deviations for batched counts
+            total_counts: Array of batched total detection counts (scaled)
+            total_std: Array of standard deviations for batched counts (scaled)
+            manual_counts: List/array of manual counts from dictionary
+            manual_std: List/array of manual standard deviations from dictionary 
+            manual_times_hours: List/array of manual times in hours since spawning
+            nearest_day: Reference datetime for submersion time calculation
             class_names: List of class names
             damaged_class_idx: Index of the damaged class (None if not present)
             show_plots: Whether to display the plot interactively
+            scale_factor: Scale factor applied to counts (for display in title)
         """
         if not times_hours or not total_counts:
             print("No data to plot")
@@ -829,24 +1022,78 @@ class TankCountPlotter:
         total_counts = np.array(total_counts)
         total_std = np.array(total_std) if total_std else np.zeros_like(total_counts)
         
-        # Calculate upper and lower bounds
+        # Convert manual data to numpy arrays (handle lists from dictionary)
+        manual_counts = np.array(manual_counts) if manual_counts is not None else np.array([])
+        manual_std = np.array(manual_std) if manual_std is not None else np.array([])
+        manual_times_hours = np.array(manual_times_hours) if manual_times_hours is not None else np.array([])
+        
+        # Calculate submersion time in hours since spawning
+        if hasattr(self, 'submersion_time') and self.submersion_time:
+            try:
+                submersion_datetime = datetime.strptime(self.submersion_time, '%Y-%m-%d_%H-%M-%S')
+                submersion_hours = (submersion_datetime - nearest_day).total_seconds() / 3600
+                print(f"Submersion time: {submersion_hours:.2f} hours since spawning")
+            except Exception as e:
+                print(f"Warning: Could not parse submersion_time: {e}, showing all manual counts")
+                submersion_hours = float('inf')
+        else:
+            print("Warning: No submersion_time configured, showing all manual counts")
+            submersion_hours = float('inf')
+        
+        # Filter manual counts to only show up to submersion time
+        if len(manual_times_hours) > 0:
+            manual_mask = manual_times_hours <= submersion_hours
+            filtered_manual_times = manual_times_hours[manual_mask]
+            filtered_manual_counts = manual_counts[manual_mask]
+            filtered_manual_std = manual_std[manual_mask]
+            
+            print(f"Showing {len(filtered_manual_times)} manual counts out of {len(manual_times_hours)} (up to submersion)")
+        else:
+            filtered_manual_times = np.array([])
+            filtered_manual_counts = np.array([])
+            filtered_manual_std = np.array([])
+            print("No manual counts to display")
+        
+        # Calculate upper and lower bounds for surface detections
         upper_bound = total_counts + total_std
         lower_bound = total_counts - total_std
         
         # Create figure with same size as subsurface plots
         fig, ax = plt.subplots(figsize=(10, 6))
         
-        # Plot the main line
+        # Plot surface detections
         ax.plot(times_hours, total_counts, 'o-', linewidth=1.5, markersize=4,
-                color='red', alpha=0.8, label='Surface Detections')
+                color='red', alpha=0.8, label='Surface Detections (scaled)')
         
-        # Plot upper and lower bound lines
-        ax.plot(times_hours, upper_bound, '--', linewidth=1, color='red', alpha=0.6, label='Upper bound')
-        ax.plot(times_hours, lower_bound, '--', linewidth=1, color='red', alpha=0.6, label='Lower bound')
+        # Plot upper and lower bound lines for surface detections
+        ax.plot(times_hours, upper_bound, '--', linewidth=1, color='red', alpha=0.6)
+        ax.plot(times_hours, lower_bound, '--', linewidth=1, color='red', alpha=0.6)
         
-        # Fill between upper and lower bounds
+        # Fill between upper and lower bounds for surface detections
         ax.fill_between(times_hours, lower_bound, upper_bound, 
-                       alpha=0.2, color='red', label='Error band')
+                       alpha=0.2, color='red')
+        
+        # Plot manual counts (up to submersion time)
+        if len(filtered_manual_times) > 0:
+            ax.plot(filtered_manual_times, filtered_manual_counts, 'o-', 
+                   linewidth=1.5, markersize=6, color='green', alpha=0.8, label='Manual Counts')
+            
+            # Add error bars for manual counts
+            n = 0.5  # Same as in subsurface plots
+            ax.fill_between(filtered_manual_times, 
+                           filtered_manual_counts - n * filtered_manual_std, 
+                           filtered_manual_counts + n * filtered_manual_std, 
+                           alpha=0.2, color='green')
+            
+            # Highlight surface calibration point if it's visible
+            if self.surface_calibration_idx < len(filtered_manual_counts):
+                ax.plot(filtered_manual_times[self.surface_calibration_idx], filtered_manual_counts[self.surface_calibration_idx], 
+                       marker='*', markersize=10, color='orange', label='Surface Calibration')
+        
+        # Add vertical line at submersion time if it's within the plot range
+        if submersion_hours != float('inf') and len(times_hours) > 0 and submersion_hours <= max(times_hours):
+            ax.axvline(x=submersion_hours, color='black', linestyle='--', alpha=0.7, 
+                      label=f'Submersion ({submersion_hours:.1f}h)')
         
         # Match subsurface plot styling
         ax.set_xlabel('Hours since spawning')
@@ -854,7 +1101,8 @@ class TankCountPlotter:
         
         # Create title matching subsurface format
         excluded_info = " (excluding Damaged)" if damaged_class_idx is not None else ""
-        title = f'{self.cslics_uuid} - Surface Detections{excluded_info} - {self.coral_species} - Tank: {self.tank_sheet_name}'
+        scale_info = f" (scale: {scale_factor:.3f})" if scale_factor != 1.0 else ""
+        title = f'{self.cslics_uuid} - Surface Detections{excluded_info}{scale_info} - {self.coral_species} - Tank: {self.tank_sheet_name}'
         ax.set_title(title, fontweight='bold')
         
         # Apply same grid style as subsurface
@@ -868,41 +1116,17 @@ class TankCountPlotter:
         
         # Apply tight layout
         plt.tight_layout()
-        
-        # Determine output directory - same logic as subsurface plots
-        if self.batch_histogram_dir:
-            plots_dir = os.path.dirname(self.batch_histogram_dir)
-        else:
-            plots_dir = self.save_det_dir
-        
-        os.makedirs(plots_dir, exist_ok=True)
-        
+                
         # Save with filename format matching subsurface plots
         current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-        plot_filename = f'surface_detections_{self.tank_sheet_name}_{self.cslics_uuid}_{current_time}.png'
-        output_path = os.path.join(plots_dir, plot_filename)
-        
+        plot_filename = f'surface_detections_with_manual_{self.tank_sheet_name}_{self.cslics_uuid}_{current_time}.png'
+        output_path = os.path.join(self.save_det_dir, plot_filename)
+
         # Save with same DPI and format as subsurface plots
         plt.savefig(output_path, dpi=600, bbox_inches='tight')
-        print(f"Surface tank estimate plot saved to: {output_path}")
+        print(f"Surface tank estimate plot with manual counts saved to: {output_path}")
         
         if show_plots:
             plt.show()
         else:
             plt.close()
-
-if __name__ == "__main__":
-    
-    # config file
-    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plot_config_202312_t4_alor_cslics08.json"
-    
-    try:
-        plotter = TankCountPlotter.from_config_file(config_path)
-        print(f"Initialized TankCountPlotter for {plotter.cslics_uuid} ({plotter.coral_species})")
-        
-        # load manual counts data here and call run_full_analysis
-        # manual_counts, manual_std, manual_times, nearest_day = load_manual_data()
-        # results = plotter.run_full_analysis(manual_counts, manual_std, manual_times, nearest_day)
-        
-    except Exception as e:
-        print(f"Error: {e}")
