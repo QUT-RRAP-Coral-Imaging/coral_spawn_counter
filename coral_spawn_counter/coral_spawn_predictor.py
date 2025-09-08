@@ -10,7 +10,7 @@ from processing.image_processor import ImageProcessor
 from processing.batch_processor import BatchProcessor
 from data.detection_data_manager import DetectionDataManager
 from data.file_manager import FileManager
-from visualisation.plotter import DetectionPlotter
+from visualisation.detection_plotter import DetectionPlotter
 from utils.time_utils import TimeUtils
 from utils.resume_manager import ResumeManager
 
@@ -75,9 +75,6 @@ class CoralSpawnPredictor:
         self.plotter = DetectionPlotter(
             self.config, self.detection_data_manager, self.time_utils
         )
-        
-        
-        
     
     def run(self):
         """Run prediction on all images with resume capability."""
@@ -209,7 +206,7 @@ class CoralSpawnPredictor:
 if __name__ == "__main__":
     
     # Default config file path if not specified
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08_test.json"
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/spawn_predictor_20231205_t4_alor_cslics08.json"
     
     # Load and update config with command line arguments
     with open(config_file, 'r') as f:
