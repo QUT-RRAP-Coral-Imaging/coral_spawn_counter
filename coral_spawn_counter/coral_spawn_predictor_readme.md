@@ -21,3 +21,12 @@ coral_spawn_counter/
 │   ├── time_utils.py              # TimeUtils class
 │   └── resume_manager.py          # ResumeManager class
 └── coral_spawn_predictor.py       # Main CoralSpawnPredictor class (orchestrator)
+
+
+Detection directory structure:
+base_detection_dir/
+└── cslics_uuid/
+    ├── plots/          # Plot outputs
+    ├── data/           # CSV data outputs  
+    ├── surface/        # Surface detection files
+    └── subsurface/     # Subsurface detection files

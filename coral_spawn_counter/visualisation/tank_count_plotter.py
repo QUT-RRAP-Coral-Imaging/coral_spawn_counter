@@ -45,6 +45,9 @@ class TankCountPlotter:
         
         # Add SHOW as a class property (default to False for batch processing)
         self.SHOW = False
+        
+        # Add batch histogram directory attribute
+        self.batch_histogram_dir = None
 
     @classmethod
     def from_config_file(cls, config_path: str):
@@ -166,6 +169,15 @@ class TankCountPlotter:
         decimal_capture_times = self.convert_to_decimal_days(batched_time, nearest_day)
         return np.array(batched_image_count), np.array(batched_std), np.array(decimal_capture_times), batched_invalid_indices
 
+    def set_batch_histogram_dir(self, batch_histogram_dir):
+        """
+        Set the directory for saving batch histogram plots.
+        
+        Args:
+            batch_histogram_dir: Path to the batch histogram directory
+        """
+        self.batch_histogram_dir = batch_histogram_dir
+
     def plot_batch_histogram(self, batch_counts, batch_idx, x_range=(0,60), y_max=50):
         """
         Plot a histogram of the counts in a single batch with consistent x and y axes.
@@ -185,11 +197,18 @@ class TankCountPlotter:
         plt.title(f'Histogram of Batch Counts (Batch {batch_idx + 1})')
         plt.grid(True)
 
+        # Determine output directory - use batch_histogram_dir if set, otherwise create one
+        if self.batch_histogram_dir:
+            output_dir = self.batch_histogram_dir
+        else:
+            # Create batch_histogram subdirectory in the main save directory
+            output_dir = os.path.join(self.save_det_dir, 'batch_histogram')
+        
         # Ensure output directory exists
-        os.makedirs(self.save_det_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         
         # Save the plot
-        output_path = os.path.join(self.save_det_dir, f'Batch_{batch_idx + 1}_Histogram.png')
+        output_path = os.path.join(output_dir, f'Batch_{batch_idx + 1}_Histogram.png')
         plt.savefig(output_path, dpi=600)
         print(f"Histogram for Batch {batch_idx + 1} saved to {output_path}")
 
@@ -610,7 +629,7 @@ class TankCountPlotter:
         
         print(f"Error data saved to {error_output_path}")
 
-    def run_full_analysis(self, det_dir, manual_counts, manual_std, manual_times, nearest_day, invalid_indices=None, show_plots=False):
+    def run_full_analysis(self, det_dir, manual_counts, manual_std, manual_times, nearest_day, invalid_indices=None, show_plots=False, batch_histogram_dir=None):
         """
         Run the complete analysis pipeline.
         
@@ -622,12 +641,17 @@ class TankCountPlotter:
             nearest_day: Reference day for time calculations
             invalid_indices: List of invalid detection file indices
             show_plots: Whether to display plots interactively
+            batch_histogram_dir: Optional directory for batch histogram plots
             
         Returns:
             dict: Results dictionary containing all analysis outputs
         """
         # Set the SHOW property based on the show_plots parameter
         self.SHOW = show_plots
+        
+        # Set batch histogram directory if provided
+        if batch_histogram_dir:
+            self.set_batch_histogram_dir(batch_histogram_dir)
         
         # try:
         # Read detection files
@@ -675,6 +699,197 @@ class TankCountPlotter:
         #     print(f"Error in analysis pipeline: {e}")
         #     return None
 
+
+    def surface_tank_estimate(self, surface_df, class_names, show_plots=False):
+        """
+        Process surface detection DataFrame to create tank estimates by summing all classes except 'Damaged'.
+        Uses batched approach similar to subsurface processing.
+        
+        Args:
+            surface_df: pandas DataFrame with detection data (from process_surface_detections)
+            class_names: List of class names (index corresponds to class ID)
+            show_plots: Whether to display the plot interactively
+            
+        Returns:
+            tuple: (batched_times_hours, batched_total_counts, batched_std) - batched times, counts, and standard deviations
+        """
+        print("Processing surface detection DataFrame for batched tank estimation...")
+        
+        if surface_df is None or surface_df.empty:
+            print("No surface detection data provided")
+            return None, None, None
+        
+        # Find the index of the 'Damaged' class to exclude it
+        damaged_class_idx = None
+        damaged_class_name = None
+        if 'Damaged' in class_names:
+            damaged_class_idx = class_names.index('Damaged')
+            damaged_class_name = str(damaged_class_idx)  # Column names are typically string representations of class IDs
+            print(f"Excluding 'Damaged' class (index {damaged_class_idx}, column '{damaged_class_name}') from tank estimates")
+        else:
+            print("No 'Damaged' class found in class names")
+        
+        # Get class columns (exclude timestamp and hours_since_spawning)
+        class_columns = [col for col in surface_df.columns if col not in ['timestamp', 'hours_since_spawning']]
+        
+        if not class_columns:
+            print("No class columns found in DataFrame")
+            return None, None, None
+        
+        print(f"Found class columns: {class_columns}")
+        
+        # Calculate total counts for each row excluding damaged class
+        row_total_counts = []
+        for _, row in surface_df.iterrows():
+            total_count = 0
+            for col in class_columns:
+                if col != damaged_class_name:  # Exclude damaged class column
+                    total_count += row[col]
+            row_total_counts.append(total_count)
+        
+        # Get times in hours since spawning
+        if 'hours_since_spawning' in surface_df.columns:
+            times_hours = surface_df['hours_since_spawning'].tolist()
+        else:
+            print("Warning: 'hours_since_spawning' column not found, using index as time")
+            times_hours = list(range(len(surface_df)))
+        
+        # Apply batching similar to subsurface processing
+        print(f"Applying batching with aggregate_size={self.aggregate_size}, skipping_frequency={self.skipping_frequency}")
+        
+        # Skip every X data points (similar to downsampling images)
+        downsampled_indices = list(range(0, len(row_total_counts), self.skipping_frequency))
+        downsampled_counts = [row_total_counts[i] for i in downsampled_indices]
+        downsampled_times = [times_hours[i] for i in downsampled_indices]
+        
+        # Create batches
+        batched_counts = [downsampled_counts[i:i + self.aggregate_size] 
+                         for i in range(0, len(downsampled_counts), self.aggregate_size)]
+        batched_times = [downsampled_times[i:i + self.aggregate_size] 
+                        for i in range(0, len(downsampled_times), self.aggregate_size)]
+        
+        # Calculate statistics for each batch
+        batched_total_counts = []
+        batched_std = []
+        batched_times_hours = []
+        
+        for batch_idx, (count_batch, time_batch) in enumerate(zip(batched_counts, batched_times)):
+            if len(count_batch) > 0:
+                # Calculate mean and std for the batch
+                batch_mean = np.mean(count_batch)
+                batch_std = np.std(count_batch) if len(count_batch) > 1 else 0
+                batch_time = np.mean(time_batch)
+                
+                batched_total_counts.append(batch_mean)
+                batched_std.append(batch_std)
+                batched_times_hours.append(batch_time)
+                
+                # Print batch statistics
+                print(f"Batch {batch_idx + 1}: {len(count_batch)} points, "
+                      f"mean={batch_mean:.1f}, std={batch_std:.1f}, time={batch_time:.1f}h")
+        
+        # Apply MAX_SAMPLE limit if specified
+        if hasattr(self, 'MAX_SAMPLE') and self.MAX_SAMPLE is not None:
+            if len(batched_total_counts) > self.MAX_SAMPLE:
+                print(f"Limiting to first {self.MAX_SAMPLE} batches (from {len(batched_total_counts)})")
+                batched_total_counts = batched_total_counts[:self.MAX_SAMPLE]
+                batched_std = batched_std[:self.MAX_SAMPLE]
+                batched_times_hours = batched_times_hours[:self.MAX_SAMPLE]
+        
+        # Create the plot
+        self.plot_surface_tank_estimate(batched_times_hours, batched_total_counts, batched_std, 
+                                       class_names, damaged_class_idx, show_plots)
+        
+        print(f"Processed {len(surface_df)} surface detection data points into {len(batched_total_counts)} batches")
+        if batched_times_hours:
+            print(f"Batched time range: {min(batched_times_hours):.1f} to {max(batched_times_hours):.1f} hours since spawning")
+        if batched_total_counts:
+            print(f"Batched count range: {min(batched_total_counts):.1f} to {max(batched_total_counts):.1f} detections")
+        
+        return batched_times_hours, batched_total_counts, batched_std
+
+    def plot_surface_tank_estimate(self, times_hours, total_counts, total_std, class_names, damaged_class_idx, show_plots=False):
+        """
+        Plot surface tank estimates over time with upper/lower bounds and fill_between, matching subsurface plot style.
+        
+        Args:
+            times_hours: Array of batched times in hours since spawning
+            total_counts: Array of batched total detection counts (excluding damaged)
+            total_std: Array of standard deviations for batched counts
+            class_names: List of class names
+            damaged_class_idx: Index of the damaged class (None if not present)
+            show_plots: Whether to display the plot interactively
+        """
+        if not times_hours or not total_counts:
+            print("No data to plot")
+            return
+            
+        # Convert to numpy arrays for consistency with subsurface plotting
+        times_hours = np.array(times_hours)
+        total_counts = np.array(total_counts)
+        total_std = np.array(total_std) if total_std else np.zeros_like(total_counts)
+        
+        # Calculate upper and lower bounds
+        upper_bound = total_counts + total_std
+        lower_bound = total_counts - total_std
+        
+        # Create figure with same size as subsurface plots
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot the main line
+        ax.plot(times_hours, total_counts, 'o-', linewidth=1.5, markersize=4,
+                color='red', alpha=0.8, label='Surface Detections')
+        
+        # Plot upper and lower bound lines
+        ax.plot(times_hours, upper_bound, '--', linewidth=1, color='red', alpha=0.6, label='Upper bound')
+        ax.plot(times_hours, lower_bound, '--', linewidth=1, color='red', alpha=0.6, label='Lower bound')
+        
+        # Fill between upper and lower bounds
+        ax.fill_between(times_hours, lower_bound, upper_bound, 
+                       alpha=0.2, color='red', label='Error band')
+        
+        # Match subsurface plot styling
+        ax.set_xlabel('Hours since spawning')
+        ax.set_ylabel('Detection counts')
+        
+        # Create title matching subsurface format
+        excluded_info = " (excluding Damaged)" if damaged_class_idx is not None else ""
+        title = f'{self.cslics_uuid} - Surface Detections{excluded_info} - {self.coral_species} - Tank: {self.tank_sheet_name}'
+        ax.set_title(title, fontweight='bold')
+        
+        # Apply same grid style as subsurface
+        ax.grid(True, alpha=0.3)
+        
+        # Set y-axis to start from 0 (common in subsurface plots)
+        ax.set_ylim(bottom=0)
+        
+        # Add legend with same style
+        ax.legend(loc='upper right')
+        
+        # Apply tight layout
+        plt.tight_layout()
+        
+        # Determine output directory - same logic as subsurface plots
+        if self.batch_histogram_dir:
+            plots_dir = os.path.dirname(self.batch_histogram_dir)
+        else:
+            plots_dir = self.save_det_dir
+        
+        os.makedirs(plots_dir, exist_ok=True)
+        
+        # Save with filename format matching subsurface plots
+        current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+        plot_filename = f'surface_detections_{self.tank_sheet_name}_{self.cslics_uuid}_{current_time}.png'
+        output_path = os.path.join(plots_dir, plot_filename)
+        
+        # Save with same DPI and format as subsurface plots
+        plt.savefig(output_path, dpi=600, bbox_inches='tight')
+        print(f"Surface tank estimate plot saved to: {output_path}")
+        
+        if show_plots:
+            plt.show()
+        else:
+            plt.close()
 
 if __name__ == "__main__":
     

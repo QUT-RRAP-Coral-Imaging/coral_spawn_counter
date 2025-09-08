@@ -34,8 +34,22 @@ class CoralSpawnPredictor:
         # Initialize utility classes
         self.time_utils = TimeUtils(self.config.submersion_datetime)
         
-        # Initialize model manager
-        self.model_manager = ModelManager(self.config, self.device)
+        # Initialize separate model managers for surface and subsurface
+        self.surface_model_manager = None
+        self.subsurface_model_manager = None
+        
+        # Initialize model managers based on mode
+        if self.config.mode in ["surface", "both"]:
+            if os.path.exists(self.config.surface_weights_path):
+                self.surface_model_manager = ModelManager(self.config, self.device, model_type='surface')
+            else:
+                print(f"Warning: Surface model weights not found: {self.config.surface_weights_path}")
+        
+        if self.config.mode in ["subsurface", "both"]:
+            if os.path.exists(self.config.subsurface_weights_path):
+                self.subsurface_model_manager = ModelManager(self.config, self.device, model_type='subsurface')
+            else:
+                print(f"Warning: Subsurface model weights not found: {self.config.subsurface_weights_path}")
         
         # Initialize file manager
         self.file_manager = FileManager(self.config)
@@ -60,15 +74,23 @@ class CoralSpawnPredictor:
             print(f"Resume configuration validated: Will start from {self.config.resume_from_image}")
             
         
-        # Initialize processors
+        # Initialize processors with the new model managers
         self.image_processor = ImageProcessor(
-            self.config, self.model_manager, self.file_manager, 
-            self.detection_data_manager, self.time_utils
+            self.config, 
+            surface_model_manager=self.surface_model_manager,
+            subsurface_model_manager=self.subsurface_model_manager,
+            file_manager=self.file_manager, 
+            detection_data_manager=self.detection_data_manager, 
+            time_utils=self.time_utils
         )
         
         self.batch_processor = BatchProcessor(
-            self.config, self.model_manager, self.file_manager,
-            self.detection_data_manager, self.time_utils
+            self.config, 
+            surface_model_manager=self.surface_model_manager,
+            subsurface_model_manager=self.subsurface_model_manager,
+            file_manager=self.file_manager,
+            detection_data_manager=self.detection_data_manager, 
+            time_utils=self.time_utils
         )
         
         # Initialize plotter
@@ -82,6 +104,12 @@ class CoralSpawnPredictor:
         print(f'Processing mode: {self.config.mode}')
         print(f'Parallel processing: {"Enabled" if self.config.parallel else "Disabled"}')
         print(f'Resume mode: {"Enabled" if self.config.resume else "Disabled"}')
+        
+        # Print model information
+        if self.surface_model_manager:
+            print(f'Surface model: {self.surface_model_manager.get_model_name()}')
+        if self.subsurface_model_manager:
+            print(f'Subsurface model: {self.subsurface_model_manager.get_model_name()}')
         
         # Gather images
         start_time = time.time()
@@ -113,14 +141,14 @@ class CoralSpawnPredictor:
         surface_img_list = []
         subsurface_img_list = []
         
-        if self.config.mode in ["surface", "both"]:
+        if self.config.mode in ["surface", "both"] and self.surface_model_manager:
             surface_img_list = [
                 img for img in img_list 
                 if self.time_utils.is_surface_image(img) and 
                 self.resume_manager.should_process_image(img)
             ]
             
-        if self.config.mode in ["subsurface", "both"]:
+        if self.config.mode in ["subsurface", "both"] and self.subsurface_model_manager:
             subsurface_img_list = [
                 img for img in img_list 
                 if not self.time_utils.is_surface_image(img) and 
@@ -144,23 +172,23 @@ class CoralSpawnPredictor:
                 results = self.batch_processor.process_images_parallel_gpu(img_subset, "Processing images")
         elif self.config.parallel:
             print("Using parallel CPU processing")
-            if self.config.mode in ["surface", "both"] and surface_img_list:
+            if self.config.mode in ["surface", "both"] and surface_img_list and self.surface_model_manager:
                 print("\nProcessing surface images:")
                 surface_results = self.batch_processor.process_images_parallel(surface_img_list, "Surface images")
                 results.extend(surface_results)
             
-            if self.config.mode in ["subsurface", "both"] and subsurface_img_list:
+            if self.config.mode in ["subsurface", "both"] and subsurface_img_list and self.subsurface_model_manager:
                 print("\nProcessing subsurface images:")
                 subsurface_results = self.batch_processor.process_images_parallel(subsurface_img_list, "Subsurface images")
                 results.extend(subsurface_results)
         else:
             print("Using sequential processing")
-            if self.config.mode in ["surface", "both"] and surface_img_list:
+            if self.config.mode in ["surface", "both"] and surface_img_list and self.surface_model_manager:
                 print("\nProcessing surface images:")
                 surface_results = self.image_processor.process_images_with_progress(surface_img_list, "Surface images")
                 results.extend(surface_results)
             
-            if self. config.mode in ["subsurface", "both"] and subsurface_img_list:
+            if self.config.mode in ["subsurface", "both"] and subsurface_img_list and self.subsurface_model_manager:
                 print("\nProcessing subsurface images:")
                 subsurface_results = self.image_processor.process_images_with_progress(subsurface_img_list, "Subsurface images")
                 results.extend(subsurface_results)
@@ -177,17 +205,35 @@ class CoralSpawnPredictor:
         processed_count = len([r for r in results if r[1] != "skipped"])
         print(f'Total images processed: {processed_count}')
         
-        if self.config.mode in ["surface", "both"]:
+        if self.config.mode in ["surface", "both"] and self.surface_model_manager:
             surface_count = sum(1 for _, model_type in results if model_type == "surface")
             print(f'Surface model detections: {surface_detections} in {surface_count} images')
         
-        if self.config.mode in ["subsurface", "both"]:
+        if self.config.mode in ["subsurface", "both"] and self.subsurface_model_manager:
             subsurface_count = sum(1 for _, model_type in results if model_type == "subsurface")
             print(f'Subsurface model detections: {subsurface_detections} in {subsurface_count} images')
         
         print(f'Run time: {duration:.2f} sec ({duration / 60.0:.2f} min, {duration / 3600.0:.2f} hrs)')
         if processed_count > 0:
             print(f'Time per image: {duration / processed_count:.2f} sec')
+    
+    # Model access methods for other components
+    def get_surface_model_manager(self):
+        """Get the surface model manager."""
+        return self.surface_model_manager
+    
+    def get_subsurface_model_manager(self):
+        """Get the subsurface model manager."""
+        return self.subsurface_model_manager
+    
+    def get_model_manager(self, model_type):
+        """Get model manager by type."""
+        if model_type == 'surface':
+            return self.surface_model_manager
+        elif model_type == 'subsurface':
+            return self.subsurface_model_manager
+        else:
+            raise ValueError(f"Unknown model_type: {model_type}")
     
     # Plotting methods that delegate to the plotter
     def plot_surface_detections(self, save_path=None):
@@ -201,6 +247,13 @@ class CoralSpawnPredictor:
     def plot_all_detections(self, save_path=None):
         """Plot all detections."""
         return self.plotter.plot_all_detections(save_path)
+    
+    def cleanup(self):
+        """Clean up model resources."""
+        if self.surface_model_manager:
+            self.surface_model_manager.cleanup()
+        if self.subsurface_model_manager:
+            self.subsurface_model_manager.cleanup()
 
 
 if __name__ == "__main__":
@@ -220,15 +273,20 @@ if __name__ == "__main__":
     # Initialize and run predictor
     predictor = CoralSpawnPredictor(config_file)
     
-    predictor.run()
-    
-    # Generate plots
-    print("Generating detection plots...")
-    if predictor.config.mode in ["surface", "both"]:
-        predictor.plot_surface_detections()
-    if predictor.config.mode in ["subsurface", "both"]:
-        predictor.plot_subsurface_detections()
-    if predictor.config.mode == "both":
-        predictor.plot_all_detections()
+    try:
+        predictor.run()
         
-    print("Processing complete")
+        # Generate plots
+        print("Generating detection plots...")
+        if predictor.config.mode in ["surface", "both"] and predictor.surface_model_manager:
+            predictor.plot_surface_detections()
+        if predictor.config.mode in ["subsurface", "both"] and predictor.subsurface_model_manager:
+            predictor.plot_subsurface_detections()
+        if predictor.config.mode == "both" and predictor.surface_model_manager and predictor.subsurface_model_manager:
+            predictor.plot_all_detections()
+            
+        print("Processing complete")
+    
+    finally:
+        # Clean up resources
+        predictor.cleanup()

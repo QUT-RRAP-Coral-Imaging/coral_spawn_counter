@@ -71,14 +71,21 @@ class CoralSpawnCounter:
         # Initialize device (no GPU needed for plotting)
         self.device = torch.device('cpu')
         
-        # Initialize model manager
-        self.model_manager = ModelManager(self.config, self.device)
+        # Initialize separate model managers for surface and subsurface
+        self.surface_model_manager = None
+        self.subsurface_model_manager = None
         
+        # Initialize model managers if weights are available
+        if os.path.exists(self.config.surface_weights_path):
+            self.surface_model_manager = ModelManager(self.config, self.device, model_type='surface')
+        
+        if os.path.exists(self.config.subsurface_weights_path):
+            self.subsurface_model_manager = ModelManager(self.config, self.device, model_type='subsurface')
         
         # Store manual counts data
         self.manual_data = None
         self.nearest_day = None
-        
+
     def process_manual_counts(self, show_plot=False):
         """
         Process manual counts data and generate plots.
@@ -101,39 +108,84 @@ class CoralSpawnCounter:
             print("Failed to process manual counts.")
             
         return self.manual_data
-    
-    
-    
-    def read_detection_files(self, is_surface=True):
+
+    def read_detection_files(self, detection_type='surface'):
         """
-        Read surface detection files from the configured surface detection directory.
+        Read detection files from the configured detection directory.
         
+        Args:
+            detection_type: Either 'surface' or 'subsurface'
+            
         Returns:
             list: List of detection file paths
         """
-        if is_surface:
+        if detection_type == 'surface':
             det_dir = self.config_manager.get_surface_detection_dir()
-        else:
+        elif detection_type == 'subsurface':
             det_dir = self.config_manager.get_subsurface_detection_dir()
+        else:
+            raise ValueError(f"Invalid detection_type: {detection_type}. Must be 'surface' or 'subsurface'")
         
-        # Look for detections_text subdirectory first
-        detections_text_dir = os.path.join(det_dir, "detections_text")
-        if os.path.exists(detections_text_dir):
-            det_dir = detections_text_dir
+        # Look for detections_text subdirectory for JSON files
+        # if detection_type == 'surface':
+        #     detections_text_dir = os.path.join(det_dir, "detections_text")
+        #     if os.path.exists(detections_text_dir):
+        #         det_dir = detections_text_dir
+        #     file_pattern = '*_det.json'  # Surface uses text files
+        # else:
+        file_pattern = '*_det.json'  # Subsurface uses JSON files
 
         if not os.path.exists(det_dir):
-            raise FileNotFoundError(f"Detection directory not found: {det_dir}")
-        # recursively search for all .json files in and below the directory
-        detection_files = sorted(Path(det_dir).rglob('*.json'))
-        print(f"Found {len(detection_files)} detection files in {det_dir}")
+            raise FileNotFoundError(f"{detection_type.capitalize()} detection directory not found: {det_dir}")
+        
+        # Recursively search for detection files
+        detection_files = sorted(Path(det_dir).rglob(file_pattern))
+        print(f"Found {len(detection_files)} {detection_type} detection files in {det_dir}")
         return detection_files
-    
-    def parse_detection_file(self, file_path):
+
+    def get_class_names(self, detection_type='surface'):
         """
-        Parse a single surface detection file.
+        Get class names for the specified detection type.
+        
+        Args:
+            detection_type: Either 'surface' or 'subsurface'
+            
+        Returns:
+            list: List of class names
+        """
+        if detection_type == 'surface' and self.surface_model_manager:
+            return self.surface_model_manager.get_class_names()
+        elif detection_type == 'subsurface' and self.subsurface_model_manager:
+            return self.subsurface_model_manager.get_class_names()
+        else:
+            print(f"Warning: No model manager available for {detection_type} detections")
+            return []
+
+    def get_model_name(self, detection_type='surface'):
+        """
+        Get model name for the specified detection type.
+        
+        Args:
+            detection_type: Either 'surface' or 'subsurface'
+            
+        Returns:
+            str: Model name
+        """
+        if detection_type == 'surface' and self.surface_model_manager:
+            return self.surface_model_manager.get_model_name()
+        elif detection_type == 'subsurface' and self.subsurface_model_manager:
+            return self.subsurface_model_manager.get_model_name()
+        else:
+            print(f"Warning: No model manager available for {detection_type} detections")
+            return f"{detection_type}_model"
+
+    def parse_detection_file(self, file_path, detection_type='surface'):
+        """
+        Parse a single detection file.
         
         Args:
             file_path: Path to the detection file
+            detection_type: Either 'surface' or 'subsurface'
             
         Returns:
             dict: Dictionary with timestamp and class counts
@@ -141,65 +193,105 @@ class CoralSpawnCounter:
         try:
             # Extract timestamp from filename
             filename = Path(file_path).stem
-            # Adjust based on your filename format
-            time_str = filename[9:-15] if len(filename) > 24 else filename
-            timestamp = datetime.strptime(time_str, "%Y%m%d_%H%M%S")
             
-            # Read detection data
+            # Extract timestamp - adjust pattern based on your filename format
+            # Common patterns: cslics08_20231205_142030_det.json or similar
+            import re
+            time_match = re.search(r'(\d{8}_\d{6})', filename)
+            if time_match:
+                time_str = time_match.group(1)
+                timestamp = datetime.strptime(time_str, "%Y%m%d_%H%M%S")
+            else:
+                print(f"Warning: Could not extract timestamp from {filename}")
+                return None
             
             class_counts = {}
+            
+            # if detection_type == 'surface':
+            #     # Read YOLO format text data
+            #     if os.path.getsize(file_path) > 0:
+            #         with open(file_path, 'r') as f:
+            #             for line in f:
+            #                 parts = line.strip().split()
+            #                 if len(parts) >= 6:  # YOLO format: class_id x_center y_center width height confidence
+            #                     class_id = int(parts[0])
+            #                     confidence = float(parts[5])
+            #                     if confidence >= self.config.confidence_threshold:
+            #                         class_counts[class_id] = class_counts.get(class_id, 0) + 1
+            
+            # else:  # subsurface
+            # Read JSON detection data
             if os.path.getsize(file_path) > 0:
                 with open(file_path, 'r') as f:
                     data = json.load(f)
-                    # Adjust this based on your JSON structure
-                    if 'detections' in data:
-                        for detection in data['detections']:
-                            class_id = detection.get('class_id', detection.get('class'))
-                            if class_id is not None:
-                                class_counts[class_id] = class_counts.get(class_id, 0) + 1
+                detections = data.get('detections', [])
+                
+                for detection in detections:
+                    confidence = detection.get('confidence', 0)
+                    if confidence >= self.config.confidence_threshold:
+                        class_id = detection.get('class_id', 0)
+                        class_counts[class_id] = class_counts.get(class_id, 0) + 1
+            
+            if self.config.verbose:
+                print(f"Parsed {filename}: {len(class_counts)} class types, {sum(class_counts.values())} total detections")
+            
             return {
                 'timestamp': timestamp,
                 'class_counts': class_counts
             }
-        
+            
         except Exception as e:
             print(f"Error parsing {file_path}: {e}")
+            traceback.print_exc()
             return None
-    
-    def process_surface_detections(self, show_plots=False):
+
+    def process_detections(self, detection_type='surface', show_plots=False):
         """
-        Process surface detections and create plots.
+        Generic method to process detections and create plots.
         
         Args:
+            detection_type: Either 'surface' or 'subsurface'
             show_plots: Whether to display plots interactively
             
         Returns:
-            pd.DataFrame: DataFrame with surface detection data
+            pd.DataFrame: DataFrame with detection data
         """
         if not self.manual_data or not self.nearest_day:
             raise ValueError("Manual counts must be processed first. Call process_manual_counts().")
             
-        print("Processing surface detections...")
+        print(f"Processing {detection_type} detections...")
+        
+        # Check if model manager exists
+        model_manager = (self.surface_model_manager if detection_type == 'surface' 
+                        else self.subsurface_model_manager)
+        if not model_manager:
+            print(f"Error: No {detection_type} model manager available. Check model weights path.")
+            return None
         
         # Read detection files
         try:
-            detection_files = self.read_detection_files()
+            detection_files = self.read_detection_files(detection_type)
         except FileNotFoundError as e:
-            print(f"Surface detection files not found: {e}")
+            print(f"{detection_type.capitalize()} detection files not found: {e}")
             return None
             
+        # Get class names
+        class_names = self.get_class_names(detection_type)
+        print(f"Model has {len(class_names)} classes: {class_names}")
+        
         # Process each file
         detection_data = []
-        class_names = self.model_manager.surface_classes
-        
-        # Process detection files
+        successful_parses = 0
         for file_path in detection_files:
-            parsed_data = self.parse_detection_file(file_path)
+            parsed_data = self.parse_detection_file(file_path, detection_type)
             if parsed_data:
                 detection_data.append(parsed_data)
+                successful_parses += 1
+        
+        print(f"Successfully parsed {successful_parses} out of {len(detection_files)} files")
         
         if not detection_data:
-            print("No valid detection data found.")
+            print(f"No valid {detection_type} detection data found.")
             return None
             
         # Create DataFrame
@@ -210,6 +302,10 @@ class CoralSpawnCounter:
                 'hours_since_spawning': (data['timestamp'] - self.nearest_day).total_seconds() / 3600
             }
             
+            # Initialize all class columns to 0
+            for i, class_name in enumerate(class_names):
+                row[class_name] = 0
+            
             # Add class counts - map class_id to class_name using list index
             for class_id, count in data['class_counts'].items():
                 # Convert class_id to int if it's not already
@@ -217,37 +313,53 @@ class CoralSpawnCounter:
                 # Use class_id as index into the class_names list
                 if 0 <= class_id < len(class_names):
                     class_name = class_names[class_id]
+                    row[class_name] = count
                 else:
-                    class_name = f'class_{class_id}'  # fallback for out-of-range IDs
-                row[class_name] = count
+                    # Handle out-of-range class IDs
+                    unknown_class = f'class_{class_id}'
+                    row[unknown_class] = count
+                    print(f"Warning: Unknown class_id {class_id} found, added as {unknown_class}")
                 
             df_data.append(row)
         
         df = pd.DataFrame(df_data).fillna(0)
         
-        # Create plots - pass the class_names list instead of dict
-        self.plot_surface_detections(df, class_names, show_plots)
+        # Sort by timestamp
+        df = df.sort_values('timestamp').reset_index(drop=True)
+        
+        print(f"Created DataFrame with {len(df)} rows and columns: {list(df.columns)}")
+        
+        # Check if we have any class data
+        class_columns = [col for col in df.columns if col not in ['timestamp', 'hours_since_spawning']]
+        if not class_columns:
+            print(f"Warning: No class columns found in DataFrame. Available columns: {list(df.columns)}")
+            print(f"Class names from model: {class_names}")
+            return df
+        
+        # Create plots
+        self.plot_detections(df, class_names, detection_type, show_plots)
         
         # Save data
-        self.save_surface_detection_data(df)
+        self.save_detection_data(df, detection_type)
         
-        print("Surface detection analysis completed successfully.")
+        print(f"{detection_type.capitalize()} detection analysis completed successfully.")
         return df
-    
-    def plot_surface_detections(self, df, class_names, show_plots=False):
+
+    def plot_detections(self, df, class_names, detection_type='surface', show_plots=False):
         """
-        Create plots for surface detections.
+        Create plots for detections.
         
         Args:
-            df: DataFrame with surface detection data
+            df: DataFrame with detection data
             class_names: List of class names (index corresponds to class ID)
+            detection_type: Either 'surface' or 'subsurface'
             show_plots: Whether to display plots interactively
         """
         # Get class columns (exclude timestamp and hours_since_spawning)
         class_columns = [col for col in df.columns if col not in ['timestamp', 'hours_since_spawning']]
         
         if not class_columns:
-            print("No class data found for plotting.")
+            print(f"No class data found for {detection_type} plotting.")
             return
             
         # Create the plot
@@ -258,49 +370,65 @@ class CoralSpawnCounter:
             ax.plot(df['hours_since_spawning'], df[class_col], 
                    marker='o', label=class_col, linewidth=2, markersize=4)
         
-        # Get surface model name for title
-        surface_model_name = self.config_manager.get_surface_model_name()
+        # Get model name for title
+        model_name = self.get_model_name(detection_type)
         
         # Customize plot
         ax.set_xlabel('Hours since spawning')
         ax.set_ylabel('Detection counts')
-        ax.set_title(f'Surface Detections - {self.config.cslics_uuid}\n'
-                    f'Model: {surface_model_name}\n'
+        ax.set_title(f'{detection_type.capitalize()} Detections - {self.config.cslics_uuid}\n'
+                    f'Model: {model_name}\n'
                     f'Species: {self.config.coral_species} - Tank: {self.config.tank_sheet_name}')
         ax.grid(True, alpha=0.3)
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
         plt.tight_layout()
         
-        # Save plot
-        output_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, "plots")
-        os.makedirs(output_dir, exist_ok=True)
+        # Use same directory structure as coral_spawn_predictor.py
+        # Create plots directory structure: base_detection_dir/cslics_uuid/plots
+        plots_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'plots')
+        os.makedirs(plots_dir, exist_ok=True)
         
-        plot_filename = f'Surface_detections_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.png'
-        plot_path = os.path.join(output_dir, plot_filename)
+        plot_filename = f'{detection_type}_detections_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.png'
+        plot_path = os.path.join(plots_dir, plot_filename)
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        print(f"Surface detection plot saved to: {plot_path}")
+        print(f"{detection_type.capitalize()} detection plot saved to: {plot_path}")
         
         if show_plots:
             plt.show()
         else:
             plt.close()
-    
-    def save_surface_detection_data(self, df):
+
+    def save_detection_data(self, df, detection_type='surface'):
         """
-        Save surface detection data to CSV.
+        Save detection data to CSV using same directory structure as coral_spawn_predictor.py.
         
         Args:
-            df: DataFrame with surface detection data
+            df: DataFrame with detection data
+            detection_type: Either 'surface' or 'subsurface'
         """
-        output_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, "plots")
-        os.makedirs(output_dir, exist_ok=True)
+        # Use same directory structure as coral_spawn_predictor.py
+        # Create data directory structure: base_detection_dir/cslics_uuid/data
+        data_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'data')
+        os.makedirs(data_dir, exist_ok=True)
         
-        csv_filename = f'Surface_detection_data_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.csv'
-        csv_path = os.path.join(output_dir, csv_filename)
+        csv_filename = f'{detection_type}_detection_data_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.csv'
+        csv_path = os.path.join(data_dir, csv_filename)
         df.to_csv(csv_path, index=False)
-        print(f"Surface detection data saved to: {csv_path}")
-    
+        print(f"{detection_type.capitalize()} detection data saved to: {csv_path}")
+
+    def process_surface_detections(self, show_plots=False):
+        """
+        Process surface detections and create plots.
+        
+        Args:
+            show_plots: Whether to display plots interactively
+            
+        Returns:
+            pd.DataFrame: DataFrame with surface detection data
+        """
+        return self.process_detections('surface', show_plots)
+
     def process_subsurface_detections(self, show_plots=False):
         """
         Process subsurface detections using the tank count plotter.
@@ -316,12 +444,7 @@ class CoralSpawnCounter:
             
         print("Processing subsurface detections...")
         
-        # Load invalid time ranges
-        # invalid_indices = self.invalid_processor.find_invalid_file_indices(
-        #     self.tank_plotter.read_detections()
-        # )
-        
-        # Run full subsurface analysis
+        # Run full subsurface analysis using tank plotter
         results = self.tank_plotter.run_full_analysis(
             det_dir=self.config_manager.get_subsurface_detection_dir(),
             manual_counts=self.manual_data['counts'],
@@ -330,7 +453,7 @@ class CoralSpawnCounter:
                 self.manual_data['counts_time'], self.nearest_day
             ),
             nearest_day=self.nearest_day,
-            invalid_indices=None, # temporary disable invalid times
+            invalid_indices=None,  # temporary disable invalid times
             show_plots=show_plots
         )
         
@@ -340,7 +463,7 @@ class CoralSpawnCounter:
             print("Failed to process subsurface detections.")
             
         return results
-    
+
     def run_full_analysis(self, show_plots=False, include_surface=True, include_subsurface=True):
         """
         Run the complete analysis pipeline.
@@ -380,7 +503,14 @@ class CoralSpawnCounter:
                 print("-"*40)
                 surface_df = self.process_surface_detections(show_plots=show_plots)
                 results['surface_data'] = surface_df
-            
+
+                # Plot surface tank estimates
+                
+                class_names = self.get_class_names('surface')
+                times_hours, total_counts, total_std = self.tank_plotter.surface_tank_estimate(surface_df, class_names, show_plots)
+
+
+    
             # Process subsurface detections
             if include_subsurface:
                 print("\n" + "-"*40)
@@ -388,7 +518,6 @@ class CoralSpawnCounter:
                 print("-"*40)
                 subsurface_results = self.process_subsurface_detections(show_plots=show_plots)
                 results['subsurface_results'] = subsurface_results
-            
             
             print("\n" + "="*60)
             print("ANALYSIS COMPLETE")
@@ -402,7 +531,7 @@ class CoralSpawnCounter:
         except Exception as e:
             print(f"Error in full analysis: {e}")
             return results
-    
+
     def print_analysis_summary(self, results):
         """
         Print a summary of the analysis results.
@@ -430,7 +559,13 @@ class CoralSpawnCounter:
             surface_count = len(results['surface_data'])
             print(f"Surface detections processed: {surface_count} time points")
         
-        print(f"\nOutput directory: {os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'plots')}")
+        # Update output directory paths to match coral_spawn_predictor.py structure
+        plots_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'plots')
+        data_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'data')
+        
+        print(f"\nOutput directories:")
+        print(f"  Plots: {plots_dir}")
+        print(f"  Data: {data_dir}")
         print(f"Surface detection directory: {self.config_manager.get_surface_detection_dir()}")
         print(f"Subsurface detection directory: {self.config_manager.get_subsurface_detection_dir()}")
     
