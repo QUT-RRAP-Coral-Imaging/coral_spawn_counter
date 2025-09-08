@@ -47,6 +47,9 @@ class ConfigManager:
         self.save_txt = self._parse_bool(self.config.get('save_txt', True))
         self.save_txt_bb = self._parse_bool(self.config.get('save_txt_bb', False))
         
+        # Check image skip parameter
+        self.image_skip = self.config.get('image_skip', 1)
+        
         # Parse max_images more efficiently
         max_images_val = self.config.get('max_images')
         self.max_images = int(max_images_val) if max_images_val else None
@@ -201,6 +204,11 @@ class ConfigManager:
             warnings.append(f"IoU threshold {self.iou_thresh} outside recommended range [0.0, 1.0]")
         if self.max_det <= 0:
             warnings.append(f"Max detections {self.max_det} should be positive")
+        
+                
+        # Validate image_skip
+        if not isinstance(self.image_skip, int) or self.image_skip < 1:
+            raise ValueError(f"image_skip must be a positive integer, got: {self.image_skip}")
         
         # Check logical combinations
         if self.plot_only and not (self.save_img or self.save_txt):

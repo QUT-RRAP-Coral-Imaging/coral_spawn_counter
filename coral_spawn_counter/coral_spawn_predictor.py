@@ -104,6 +104,13 @@ class CoralSpawnPredictor:
             img_list = self.resume_manager.filter_images_for_resume(img_list)
             print(f'After resume filtering: {len(img_list)} images to process')
         
+        # Apply image_skip filtering BEFORE separating by type
+        image_skip = getattr(self.config, 'image_skip', 1)
+        if image_skip > 1:
+            original_count = len(img_list)
+            img_list = [img for i, img in enumerate(img_list) if i % image_skip == 0]
+            print(f'Applied image_skip={image_skip}: {len(img_list)} images selected from {original_count}')
+    
         # Filter images by mode and resume settings
         start_time = time.time()
         surface_img_list = []
@@ -122,7 +129,7 @@ class CoralSpawnPredictor:
                 if not self.time_utils.is_surface_image(img) and 
                 self.resume_manager.should_process_image(img)
             ]
-        
+    
         print(f'Images filtered by mode and resume settings in {time.time() - start_time:.2f} seconds')
         print(f'Found {len(surface_img_list)} surface images and {len(subsurface_img_list)} subsurface images to process')
         

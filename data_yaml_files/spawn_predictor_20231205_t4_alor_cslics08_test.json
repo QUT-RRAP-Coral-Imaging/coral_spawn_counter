@@ -15,5 +15,7 @@
   "save_txt": true,
   "save_img": true,
   "resume": false,
-  "resume_image_name": "cslics08_20231205_235708_434400_img.jpg"
+  "resume_image_name": "cslics08_20231205_235708_434400_img.jpg",
+  "image_skip": 2,
+  "_comment_image_skip": "Process every image (1 = no skip, 2 = every other, 3 = every third, etc.)"
 }

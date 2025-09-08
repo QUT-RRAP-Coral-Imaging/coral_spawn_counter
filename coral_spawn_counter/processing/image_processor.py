@@ -36,6 +36,7 @@ class ImageProcessor:
         self.save_txt = config.save_txt
         self.save_txt_bb = config.save_txt_bb
         self.img_dir = config.img_dir
+        self.image_skip = config.image_skip
     
     def process_image(self, img_path):
         """
@@ -173,13 +174,23 @@ class ImageProcessor:
         Returns:
             list: List of (detection_count, model_type) tuples
         """
+        # Filter out invalid images first
+        valid_images, invalid_images = self.filter_valid_images(img_list)
+        
+        # Create results list to maintain original order
         results = []
+        valid_idx = 0
         
         try:
             # Use tqdm for progress bar if available
             for img in tqdm(img_list, desc=desc, unit="img"):
-                result = self.process_image(img)
-                results.append(result)
+                if img in invalid_images:
+                    # Skip invalid images
+                    results.append((0, "skipped"))
+                else:
+                    result = self.process_image(valid_images[valid_idx])
+                    results.append(result)
+                    valid_idx += 1
         except ImportError:
             # Fallback if tqdm is not installed
             total = len(img_list)
@@ -187,42 +198,48 @@ class ImageProcessor:
                 if i % 10 == 0 or i == total - 1:
                     progress = (i + 1) / total * 100
                     print(f"{desc}: {progress:.1f}% ({i+1}/{total})", end="\r")
-                result = self.process_image(img)
-                results.append(result)
+                
+                if img in invalid_images:
+                    # Skip invalid images
+                    results.append((0, "skipped"))
+                else:
+                    result = self.process_image(valid_images[valid_idx])
+                    results.append(result)
+                    valid_idx += 1
             print()  # Add a newline after progress updates
         
         return results
     
-    def process_images_by_type(self, img_list, force_type=None):
-        """
-        Process images, optionally forcing them to be treated as a specific type.
+    # def process_images_by_type(self, img_list, force_type=None):
+    #     """
+    #     Process images, optionally forcing them to be treated as a specific type.
         
-        Args:
-            img_list: List of image paths to process
-            force_type: If specified, treat all images as this type ("surface" or "subsurface")
+    #     Args:
+    #         img_list: List of image paths to process
+    #         force_type: If specified, treat all images as this type ("surface" or "subsurface")
             
-        Returns:
-            list: List of (detection_count, model_type) tuples
-        """
-        results = []
+    #     Returns:
+    #         list: List of (detection_count, model_type) tuples
+    #     """
+    #     results = []
         
-        for img_path in img_list:
-            if force_type:
-                # Override the automatic detection
-                is_surface = (force_type == "surface")
-            else:
-                # Use automatic detection based on timestamp
-                is_surface = self.time_utils.is_surface_image(img_path)
+    #     for img_path in img_list:
+    #         if force_type:
+    #             # Override the automatic detection
+    #             is_surface = (force_type == "surface")
+    #         else:
+    #             # Use automatic detection based on timestamp
+    #             is_surface = self.time_utils.is_surface_image(img_path)
             
-            # Skip processing based on mode
-            if (is_surface and self.mode == "subsurface") or (not is_surface and self.mode == "surface"):
-                results.append((0, "skipped"))
-                continue
+    #         # Skip processing based on mode
+    #         if (is_surface and self.mode == "subsurface") or (not is_surface and self.mode == "surface"):
+    #             results.append((0, "skipped"))
+    #             continue
             
-            result = self.process_image(img_path)
-            results.append(result)
+    #         result = self.process_image(img_path)
+    #         results.append(result)
         
-        return results
+    #     return results
     
     def validate_image(self, img_path):
         """
@@ -270,7 +287,8 @@ class ImageProcessor:
             else:
                 invalid_images.append(img_path)
         
-        if invalid_images and self.verbose:
+        # Update verbose output
+        if self.verbose and invalid_images:
             print(f"Warning: Found {len(invalid_images)} invalid images")
             for invalid in invalid_images[:5]:  # Show first 5
                 print(f"  Invalid: {invalid}")
