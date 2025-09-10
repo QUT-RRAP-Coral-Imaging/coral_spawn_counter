@@ -18,11 +18,11 @@
     "skipping_frequency": 1,
     "aggregate_size": 50,
     "confidence_threshold": 0.3,
-    "MAX_SAMPLE": 2000,
+    "MAX_SAMPLE": 20000,
     "surface_calibration_idx": 1,
-    "surface_calibration_window_size": 1,
+    "surface_calibration_window_size": 10,
     "surface_calibration_window_shift": 0,
     "subsurface_calibration_idx": 7,
-    "subsurface_calibration_window_size": 1,
+    "subsurface_calibration_window_size": 10,
     "subsurface_calibration_window_shift": 0
 }

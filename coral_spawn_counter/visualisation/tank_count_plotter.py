@@ -317,14 +317,15 @@ class TankCountPlotter:
             plt.show()
         plt.close()
 
-    def plot_image_detections(self, counts, std, times):
+    def plot_image_detections(self, counts, std, times, nearest_day=None):
         """
-        Plot image-based detections with error bands.
+        Plot image-based detections with error bands. This is essentially the subsurface plot.
 
         Args:
             counts (array-like): Array of detection counts.
             std (array-like): Array of standard deviations for the counts.
             times (array-like): Array of times (in decimal days) since spawning.
+            nearest_day (datetime): Reference day for submersion time calculations.
         """
         n = 1  # Multiplier for the error band
         __, ax = plt.subplots()
@@ -333,8 +334,33 @@ class TankCountPlotter:
         plt.grid(True)
         plt.xlabel('Days since spawning')
         plt.ylabel(f'Image count (batched {self.aggregate_size} images)')
-        plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid}')
+        
+        # Get subsurface model name for the title
+        try:
+            subsurface_model_name = self.config_manager.get_subsurface_model_name()
+            plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid}\nSubsurface Model: {subsurface_model_name}')
+        except Exception as e:
+            print(f"Warning: Could not get subsurface model name: {e}")
+            plt.title(f'CSLICS AI Count: {self.tank_sheet_name}, {self.cslics_uuid}')
+        
         plt.legend()
+        
+        # Set x-axis limits from submersion time to the last time point
+        if hasattr(self, 'submersion_time') and self.submersion_time and len(times) > 0 and nearest_day:
+            try:
+                # Parse submersion time and convert to decimal days since spawning
+                submersion_datetime = datetime.strptime(self.submersion_time, '%Y-%m-%d_%H-%M-%S')
+                # Convert to decimal days using the same method as other times
+                submersion_days = (submersion_datetime - nearest_day).total_seconds() / (60 * 60 * 24)
+                
+                # Set x-axis limits from submersion time to last time point
+                ax.set_xlim(submersion_days, times[-1])
+                print(f"X-axis limited from submersion time ({submersion_days:.3f} days) to last time point ({times[-1]:.3f} days)")
+            except Exception as e:
+                print(f"Warning: Could not parse submersion_time for x-axis limits: {e}")
+        elif len(times) > 0:
+            # If no submersion time, just set to start from first time point
+            ax.set_xlim(times[0], times[-1])
         
         output_path = os.path.join(self.save_det_dir, f'Image_counts_{self.tank_sheet_name}.png')
         plt.savefig(output_path)
@@ -789,7 +815,7 @@ class TankCountPlotter:
             sample_list, nearest_day, invalid_indices)
         
         # Plot image detections
-        self.plot_image_detections(image_counts, image_std, image_times)
+        self.plot_image_detections(image_counts, image_std, image_times, nearest_day)
         
         # Process and scale counts
         (tank_counts_def, tank_std_def), (tank_counts_cal, tank_std_cal), scaling_idx = self.process_and_scale_counts(
@@ -1079,7 +1105,7 @@ class TankCountPlotter:
                    linewidth=1.5, markersize=6, color='green', alpha=0.8, label='Manual Counts')
             
             # Add error bars for manual counts
-            n = 0.5  # Same as in subsurface plots
+            n = 1  # Same as in subsurface plots
             ax.fill_between(filtered_manual_times, 
                            filtered_manual_counts - n * filtered_manual_std, 
                            filtered_manual_counts + n * filtered_manual_std, 

@@ -496,7 +496,7 @@ class CoralSpawnCounter:
             
         return results
 
-    def run_full_analysis(self, show_plots=False, include_surface=True, include_subsurface=True):
+    def run_full_analysis(self, show_plots=False, include_surface=True, include_subsurface=True, export_counts=True):
         """
         Run the complete analysis pipeline.
         
@@ -504,6 +504,7 @@ class CoralSpawnCounter:
             show_plots: Whether to display plots interactively
             include_surface: Whether to process surface detections
             include_subsurface: Whether to process subsurface detections
+            export_counts: Whether to export count data to JSON file
             
         Returns:
             dict: Complete analysis results
@@ -568,6 +569,7 @@ class CoralSpawnCounter:
                         calibration_idx=self.config_manager.get_surface_calibration_idx()
                     )
                     
+                    
                     print(f"Surface tank estimate completed with scale factor: {scale_factor:.4f}")
     
             # Process subsurface detections
@@ -590,6 +592,18 @@ class CoralSpawnCounter:
             
             # Print summary
             self.print_analysis_summary(results)
+            
+            # Export counts data to JSON if requested
+            if export_counts:
+                print("\n" + "-"*40)
+                print("EXPORTING COUNT DATA")
+                print("-"*40)
+                self.export_counts_to_json(
+                    manual_counts=results.get('manual_data'),
+                    subsurface_counts=results.get('subsurface_results'),
+                    surface_counts=results.get('surface_data'),
+                    include_metadata=True
+                )
             
             return results
             
@@ -642,11 +656,263 @@ class CoralSpawnCounter:
         """Get a summary of the current configuration."""
         return self.manual_processor.get_config_summary()
 
+    def export_counts_to_json(self, manual_counts, subsurface_counts=None, surface_counts=None, 
+                         output_path=None, include_metadata=True):
+        """
+        Export manual counts, subsurface counts, and surface counts to a JSON file.
+        This allows recreation of the plots produced for surface and subsurface analysis.
+        
+        Args:
+            manual_counts: Manual count data (dict or array-like)
+            subsurface_counts: Subsurface detection data (dict or DataFrame, optional)
+            surface_counts: Surface detection data (dict or DataFrame, optional)
+            output_path: Path to save JSON file. If None, uses default location.
+            include_metadata: Whether to include configuration metadata
+            
+        Returns:
+            str: Path to the saved JSON file
+        """
+        try:
+            # Prepare the export data dictionary
+            export_data = {
+                "export_timestamp": datetime.now().isoformat(),
+                "data_version": "1.0"
+            }
+            
+            # Add metadata if requested
+            if include_metadata and hasattr(self, 'config'):
+                export_data["metadata"] = {
+                    "cslics_uuid": self.config.cslics_uuid,
+                    "coral_species": self.config.coral_species,
+                    "tank_sheet_name": self.config.tank_sheet_name,
+                    "confidence_threshold": self.config.confidence_threshold,
+                    "submersion_time": getattr(self.config, 'submersion_time', None),
+                    "surface_model_name": self.config_manager.get_surface_model_name() if hasattr(self, 'config_manager') else None,
+                    "subsurface_model_name": self.config_manager.get_subsurface_model_name() if hasattr(self, 'config_manager') else None,
+                    "surface_calibration": {
+                        "idx": self.config_manager.get_surface_calibration_idx() if hasattr(self, 'config_manager') else None,
+                        "window_size": self.config_manager.get_surface_calibration_window_size() if hasattr(self, 'config_manager') else None,
+                        "window_shift": self.config_manager.get_surface_calibration_window_shift() if hasattr(self, 'config_manager') else None
+                    },
+                    "subsurface_calibration": {
+                        "idx": self.config_manager.get_subsurface_calibration_idx() if hasattr(self, 'config_manager') else None,
+                        "window_size": self.config_manager.get_subsurface_calibration_window_size() if hasattr(self, 'config_manager') else None,
+                        "window_shift": self.config_manager.get_subsurface_calibration_window_shift() if hasattr(self, 'config_manager') else None
+                    }
+                }
+            
+            # Process manual counts data
+            if manual_counts is not None:
+                if isinstance(manual_counts, dict):
+                    # Handle dictionary format (from self.manual_data)
+                    manual_data = {
+                        "counts": manual_counts.get('counts', []),
+                        "std": manual_counts.get('std', []),
+                        "camera_uuid": manual_counts.get('camera_uuid'),
+                        "species": manual_counts.get('species')
+                    }
+                    
+                    # Convert datetime objects to ISO format strings
+                    if 'counts_time' in manual_counts:
+                        times = manual_counts['counts_time']
+                        if isinstance(times[0], datetime):
+                            manual_data["counts_time"] = [t.isoformat() for t in times]
+                        else:
+                            manual_data["counts_time"] = times
+                    
+                    # Add decimal days if available
+                    if hasattr(self, 'nearest_day') and self.nearest_day:
+                        manual_data["nearest_day"] = self.nearest_day.isoformat()
+                        decimal_days = []
+                        for t in manual_counts['counts_time']:
+                            if isinstance(t, datetime):
+                                decimal_days.append((t - self.nearest_day).total_seconds() / (24 * 3600))
+                            else:
+                                decimal_days.append(t)  # Assume already in decimal days
+                        manual_data["decimal_days"] = decimal_days
+                    
+                    export_data["manual_counts"] = manual_data
+                else:
+                    # Handle array-like format
+                    export_data["manual_counts"] = {
+                        "counts": list(manual_counts) if hasattr(manual_counts, '__iter__') else [manual_counts]
+                    }
+            
+            # Process subsurface counts data
+            if subsurface_counts is not None:
+                subsurface_data = {}
+                
+                if isinstance(subsurface_counts, dict):
+                    # Handle results dictionary from tank plotter
+                    if 'image_counts' in subsurface_counts:
+                        # Ensure it's a list
+                        image_counts = subsurface_counts['image_counts']
+                        if isinstance(image_counts, (list, tuple)):
+                            subsurface_data["image_counts"] = list(image_counts)
+                        elif hasattr(image_counts, 'tolist'):  # numpy array
+                            subsurface_data["image_counts"] = image_counts.tolist()
+                        else:
+                            subsurface_data["image_counts"] = [image_counts]
+                    if 'tank_counts_cal' in subsurface_counts:
+                        # Ensure it's a list
+                        tank_counts_cal = subsurface_counts['tank_counts_cal']
+                        if isinstance(tank_counts_cal, (list, tuple)):
+                            subsurface_data["tank_counts_cal"] = list(tank_counts_cal)
+                        elif hasattr(tank_counts_cal, 'tolist'):  # numpy array
+                            subsurface_data["tank_counts_cal"] = tank_counts_cal.tolist()
+                        else:
+                            subsurface_data["tank_counts_cal"] = [tank_counts_cal]
+                    if 'tank_std_cal' in subsurface_counts:
+                        # Ensure it's a list
+                        tank_std_cal = subsurface_counts['tank_std_cal']
+                        if isinstance(tank_std_cal, (list, tuple)):
+                            subsurface_data["tank_std_cal"] = list(tank_std_cal)
+                        elif hasattr(tank_std_cal, 'tolist'):  # numpy array
+                            subsurface_data["tank_std_cal"] = tank_std_cal.tolist()
+                        else:
+                            subsurface_data["tank_std_cal"] = [tank_std_cal]
+                    if 'image_times' in subsurface_counts:
+                        # Ensure it's a list
+                        image_times = subsurface_counts['image_times']
+                        if isinstance(image_times, (list, tuple)):
+                            subsurface_data["image_times"] = list(image_times)
+                        elif hasattr(image_times, 'tolist'):  # numpy array
+                            subsurface_data["image_times"] = image_times.tolist()
+                        else:
+                            subsurface_data["image_times"] = [image_times]
+                    
+                    if 'decimal_days' in subsurface_counts:
+                        # Ensure it's a list
+                        decimal_days = subsurface_counts['decimal_days']
+                        if isinstance(decimal_days, (list, tuple)):
+                            subsurface_data["decimal_days"] = list(decimal_days)
+                        elif hasattr(decimal_days, 'tolist'):  # numpy array
+                            subsurface_data["decimal_days"] = decimal_days.tolist()
+                        else:
+                            subsurface_data["decimal_days"] = [decimal_days]
+                    
+                    if 'total_counts_scaled' in subsurface_counts:
+                        # Ensure it's a list
+                        total_counts_scaled = subsurface_counts['total_counts_scaled']
+                        if isinstance(total_counts_scaled, (list, tuple)):
+                            subsurface_data["total_counts_scaled"] = list(total_counts_scaled)
+                        elif hasattr(total_counts_scaled, 'tolist'):  # numpy array
+                            subsurface_data["total_counts_scaled"] = total_counts_scaled.tolist()
+                        else:
+                            subsurface_data["total_counts_scaled"] = [total_counts_scaled]
+                    
+                    if 'scale_factor' in subsurface_counts:
+                        subsurface_data["scale_factor"] = subsurface_counts['scale_factor']
+                    
+                    if 'errors' in subsurface_counts:
+                        # Ensure it's a list
+                        errors = subsurface_counts['errors']
+                        if isinstance(errors, (list, tuple)):
+                            subsurface_data["errors"] = list(errors)
+                        elif hasattr(errors, 'tolist'):  # numpy array
+                            subsurface_data["errors"] = errors.tolist()
+                        else:
+                            subsurface_data["errors"] = [errors] if errors is not None else []
+                
+                elif hasattr(subsurface_counts, 'to_dict'):
+                    # Handle DataFrame
+                    subsurface_data = subsurface_counts.to_dict('list')
+                    # Convert any datetime columns to ISO strings
+                    for key, values in subsurface_data.items():
+                        if values and isinstance(values[0], datetime):
+                            subsurface_data[key] = [v.isoformat() for v in values]
+                
+                export_data["subsurface_counts"] = subsurface_data
+            
+            # Process surface counts data
+            if surface_counts is not None:
+                surface_data = {}
+                
+                if isinstance(surface_counts, dict):
+                    surface_data = surface_counts.copy()
+                    # Convert datetime objects to ISO strings
+                    for key, values in surface_data.items():
+                        if isinstance(values, list) and values and isinstance(values[0], datetime):
+                            surface_data[key] = [v.isoformat() for v in values]
+                elif hasattr(surface_counts, 'to_dict'):
+                    # Handle DataFrame
+                    surface_data = surface_counts.to_dict('list')
+                    # Convert any datetime columns to ISO strings
+                    for key, values in surface_data.items():
+                        if values and isinstance(values[0], datetime):
+                            surface_data[key] = [v.isoformat() for v in values]
+                
+                export_data["surface_counts"] = surface_data
+            
+            # Determine output path
+            if output_path is None:
+                # Use same directory structure as other outputs
+                data_dir = os.path.join(self.config.base_detection_dir, self.config.cslics_uuid, 'data')
+                os.makedirs(data_dir, exist_ok=True)
+                filename = f'counts_export_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.json'
+                output_path = os.path.join(data_dir, filename)
+            
+            # Write to JSON file
+            with open(output_path, 'w') as f:
+                json.dump(export_data, f, indent=2, default=str)
+            
+            print(f"Counts data exported to: {output_path}")
+            
+            # Print summary of exported data
+            print("\nExported data summary:")
+            if "manual_counts" in export_data:
+                manual_count = len(export_data["manual_counts"].get("counts", []))
+                print(f"  Manual counts: {manual_count} data points")
+            if "subsurface_counts" in export_data:
+                subsurface_count = len(export_data["subsurface_counts"].get("image_counts", []))
+                print(f"  Subsurface counts: {subsurface_count} data points")
+            if "surface_counts" in export_data:
+                # Count non-metadata columns
+                surface_data = export_data["surface_counts"]
+                metadata_cols = ['timestamp', 'hours_since_spawning']
+                data_cols = [k for k in surface_data.keys() if k not in metadata_cols]
+                surface_count = len(surface_data.get("timestamp", [])) if "timestamp" in surface_data else 0
+                print(f"  Surface counts: {surface_count} data points across {len(data_cols)} classes")
+            
+            return output_path
+            
+        except Exception as e:
+            print(f"Error exporting counts to JSON: {e}")
+            traceback.print_exc()
+            return None
+
+    def export_analysis_results(self, results, output_path=None, include_metadata=True):
+        """
+        Export analysis results to JSON file.
+        Convenience method to export results from run_full_analysis().
+        
+        Args:
+            results: Results dictionary from run_full_analysis()
+            output_path: Path to save JSON file. If None, uses default location.
+            include_metadata: Whether to include configuration metadata
+            
+        Returns:
+            str: Path to the saved JSON file
+        """
+        if not isinstance(results, dict):
+            print("Error: Results must be a dictionary from run_full_analysis()")
+            return None
+        
+        return self.export_counts_to_json(
+            manual_counts=results.get('manual_data'),
+            subsurface_counts=results.get('subsurface_results'),
+            surface_counts=results.get('surface_data'),
+            output_path=output_path,
+            include_metadata=include_metadata
+        )
+
 
 # Example usage and main execution
 if __name__ == "__main__":
     # Configuration file path
-    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plot_config_202312_t4_alor_cslics01.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics02.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics06.json"
+    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics08.json"
     
     try:
         # Initialize the coral spawn counter
@@ -662,11 +928,16 @@ if __name__ == "__main__":
         results = counter.run_full_analysis(
             show_plots=False,  # Set to True to display plots interactively
             include_surface=True,
-            include_subsurface=True
+            include_subsurface=True,
+            export_counts=True  # Automatically export count data to JSON
         )
         
         if results:
             print("\nAnalysis completed successfully!")
+            
+            # Optionally export to a custom location
+            # custom_export_path = "/path/to/custom/export.json"
+            # counter.export_analysis_results(results, output_path=custom_export_path)
         else:
             print("\nAnalysis failed or returned no results.")
             

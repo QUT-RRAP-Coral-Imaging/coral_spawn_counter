@@ -886,8 +886,8 @@ if __name__ == "__main__":
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t5_pdae_100000000846a7ff.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202411_t6_lcor_10000000570f9d9c.json"
     
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics01.json"
-    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics08.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics01.json"
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics08.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/config_202312_t4_alor_cslics09.json"
     
     processor = CSLICSDataProcessor(config_file)
