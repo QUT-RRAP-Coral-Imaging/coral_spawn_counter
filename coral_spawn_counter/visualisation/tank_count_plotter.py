@@ -672,6 +672,7 @@ class TankCountPlotter:
         """
         Compute and plot the error between manual counts and AI-calibrated tank counts.
         Only uses valid (non-excluded) time points for comparison.
+        Only calculates errors for manual times after the submersion time.
         Saves the error data to a JSON file for later analysis.
 
         Args:
@@ -695,13 +696,38 @@ class TankCountPlotter:
             print("Warning: No valid time points found for error calculation.")
             return [], []
         
-        # Find the closest valid image time for each manual time
-        closest_indices = [np.argmin(np.abs(valid_image_times - manual_time)) for manual_time in manual_times]
+        # Filter manual times to only include those after submersion time
+        # HACK in handling post-submersion time filtering, defined in the middle of coral_spawn_counter.py
+        if hasattr(self, 'submersion_time_decimal') and self.submersion_time_decimal:
+            try:                
+                # Filter manual times and counts to only include post-submersion
+                post_submersion_mask = np.array(manual_times) > self.submersion_time_decimal
+                filtered_manual_times = np.array(manual_times)[post_submersion_mask]
+                filtered_manual_counts = np.array(manual_counts)[post_submersion_mask]
+                
+                print(f"Filtering to {len(filtered_manual_times)} manual times after submersion (from {len(manual_times)} total)")
+                
+            except Exception as e:
+                print(f"Warning: Could not parse submersion_time for error calculation: {e}")
+                print("Using all manual times for error calculation")
+                filtered_manual_times = np.array(manual_times)
+                filtered_manual_counts = np.array(manual_counts)
+        else:
+            print("Warning: No submersion_time configured, using all manual times for error calculation")
+            filtered_manual_times = np.array(manual_times)
+            filtered_manual_counts = np.array(manual_counts)
+        
+        if len(filtered_manual_times) == 0:
+            print("Warning: No manual times found after submersion time.")
+            return [], []
+        
+        # Find the closest valid image time for each filtered manual time
+        closest_indices = [np.argmin(np.abs(valid_image_times - manual_time)) for manual_time in filtered_manual_times]
         closest_image_times = [valid_image_times[idx] for idx in closest_indices]
         closest_tank_counts = [valid_tank_counts[idx] for idx in closest_indices]
 
         # Compute the error (difference) between manual counts and AI-calibrated counts
-        errors = np.array(closest_tank_counts) - np.array(manual_counts)
+        errors = np.array(closest_tank_counts) - np.array(filtered_manual_counts)
         
         # Calculate error statistics
         mean_abs_error = np.mean(np.abs(errors))
@@ -709,7 +735,7 @@ class TankCountPlotter:
         
         # Plot the error
         __, ax = plt.subplots()
-        ax.plot(manual_times, errors, marker='o', color='red', label='Error (AI - Manual)')
+        ax.plot(filtered_manual_times, errors, marker='o', color='red', label='Error (AI - Manual)')
         plt.axhline(0, color='black', linestyle='--', linewidth=0.8, label='Zero Error')
         plt.grid(True)
         plt.xlabel('Days since spawning')
@@ -735,9 +761,9 @@ class TankCountPlotter:
         plt.close()
         
         # Save the error data to JSON
-        self.save_error_data_to_json(manual_times, errors.tolist(), mean_abs_error, rmse)
+        self.save_error_data_to_json(filtered_manual_times.tolist(), errors.tolist(), mean_abs_error, rmse)
         
-        return manual_times, errors
+        return filtered_manual_times, errors
         
     def save_error_data_to_json(self, manual_times, errors, mae, rmse):
         """
@@ -821,16 +847,18 @@ class TankCountPlotter:
         (tank_counts_def, tank_std_def), (tank_counts_cal, tank_std_cal), scaling_idx = self.process_and_scale_counts(
             image_counts, image_std, image_times, manual_counts, manual_std, manual_times, detection_type)
         
+        # Plot error analysis
+        manual_times_error, errors = self.plot_error_between_manual_and_ai(
+            image_times, tank_counts_cal, manual_times, manual_counts, batched_invalid_indices
+        )
+        
         # Plot combined results
         self.plot_detections_and_manual_counts(
             image_times, tank_counts_def, tank_std_def, tank_counts_cal, tank_std_cal,
             manual_counts, manual_std, manual_times, scaling_idx, batched_invalid_indices,
             "combined", detection_type)
         
-        # Plot error analysis
-        manual_times_error, errors = self.plot_error_between_manual_and_ai(
-            image_times, tank_counts_cal, manual_times, manual_counts, batched_invalid_indices
-        )
+        
         
         return {
             'image_counts': image_counts,
@@ -851,24 +879,24 @@ class TankCountPlotter:
         #     return None
 
 
+    def median_absolute_deviation(self, data):
+        """
+        Compute the median absolute deviation (MAD) for a list or array.
+        Args:
+            data: list or numpy array
+        Returns:
+            float: MAD value
+        """
+        data = np.array(data)
+        median = np.median(data)
+        mad = np.median(np.abs(data - median))
+        return median, mad
+
     def surface_tank_estimate(self, surface_df, class_names, manual_counts, manual_std, manual_times, nearest_day, show_plots=False, apply_calibration=True, calibration_idx=0):
         """
         Process surface detection DataFrame to create tank estimates by summing all classes except 'Damaged'.
         Uses batched approach similar to subsurface processing and applies calibration scaling.
-        
-        Args:
-            surface_df: pandas DataFrame with detection data (from process_surface_detections)
-            class_names: List of class names (index corresponds to class ID)
-            manual_counts: List/array of manual counts from dictionary
-            manual_std: List/array of manual standard deviations from dictionary
-            manual_times: List of datetime objects from dictionary
-            nearest_day: Reference datetime for calculating hours since spawning
-            show_plots: Whether to display the plot interactively
-            apply_calibration: Whether to apply calibration scaling (default: True)
-            calibration_idx: Index of manual count to use for calibration (default: 0)
-            
-        Returns:
-            tuple: (batched_times_hours, batched_total_counts_scaled, scale_factor) - batched times, scaled counts, and scale factor
+        Now uses median and MAD for batch statistics.
         """
         print("Processing surface detection DataFrame for batched tank estimation...")
         
@@ -876,105 +904,84 @@ class TankCountPlotter:
             print("No surface detection data provided")
             return None, None, None
         
-        # Convert to standard Python lists/arrays (manual data comes from dictionary)
         manual_counts = list(manual_counts) if manual_counts is not None else []
         manual_std = list(manual_std) if manual_std is not None else []
         manual_times = list(manual_times) if manual_times is not None else []
         
-        # Find the index of the 'Damaged' class to exclude it
         damaged_class_idx = None
         damaged_class_name = None
         if 'Damaged' in class_names:
             damaged_class_idx = class_names.index('Damaged')
-            damaged_class_name = str(damaged_class_idx)  # Column names are typically string representations of class IDs
+            damaged_class_name = str(damaged_class_idx)
             print(f"Excluding 'Damaged' class (index {damaged_class_idx}, column '{damaged_class_name}') from tank estimates")
         else:
             print("No 'Damaged' class found in class names")
         
-        # Get class columns (exclude timestamp and hours_since_spawning)
         class_columns = [col for col in surface_df.columns if col not in ['timestamp', 'hours_since_spawning']]
-        
         if not class_columns:
             print("No class columns found in DataFrame")
             return None, None, None
         
         print(f"Found class columns: {class_columns}")
         
-        # Calculate total counts for each row excluding damaged class
         row_total_counts = []
         for _, row in surface_df.iterrows():
             total_count = 0
             for col in class_columns:
-                if col != damaged_class_name:  # Exclude damaged class column
+                if col != damaged_class_name:
                     total_count += row[col]
             row_total_counts.append(total_count)
         
-        # Get times in hours since spawning
         if 'hours_since_spawning' in surface_df.columns:
             times_hours = surface_df['hours_since_spawning'].tolist()
         else:
             print("Warning: 'hours_since_spawning' column not found, using index as time")
             times_hours = list(range(len(surface_df)))
         
-        # Apply batching similar to subsurface processing
         print(f"Applying batching with aggregate_size={self.aggregate_size}, skipping_frequency={self.skipping_frequency}")
-        
-        # Skip every X data points (similar to downsampling images)
         downsampled_indices = list(range(0, len(row_total_counts), self.skipping_frequency))
         downsampled_counts = [row_total_counts[i] for i in downsampled_indices]
         downsampled_times = [times_hours[i] for i in downsampled_indices]
         
-        # Create batches
         batched_counts = [downsampled_counts[i:i + self.aggregate_size] 
                          for i in range(0, len(downsampled_counts), self.aggregate_size)]
         batched_times = [downsampled_times[i:i + self.aggregate_size] 
                         for i in range(0, len(downsampled_times), self.aggregate_size)]
         
-        # Calculate statistics for each batch
         batched_total_counts = []
         batched_std = []
         batched_times_hours = []
         
         for batch_idx, (count_batch, time_batch) in enumerate(zip(batched_counts, batched_times)):
             if len(count_batch) > 0:
-                # Calculate mean and std for the batch
-                batch_mean = np.mean(count_batch)
-                batch_std = np.std(count_batch) if len(count_batch) > 1 else 0
-                batch_time = np.mean(time_batch)
-                
-                batched_total_counts.append(batch_mean)
-                batched_std.append(batch_std)
+                batch_median, batch_mad = self.median_absolute_deviation(count_batch)
+                batch_time = np.median(time_batch)
+                batched_total_counts.append(batch_median)
+                batched_std.append(batch_mad)
                 batched_times_hours.append(batch_time)
-                
-                # Print batch statistics
                 print(f"Batch {batch_idx + 1}: {len(count_batch)} points, "
-                      f"mean={batch_mean:.1f}, std={batch_std:.1f}, time={batch_time:.1f}h")
-        
-        # Apply MAX_SAMPLE limit if specified
+                      f"median={batch_median:.1f}, MAD={batch_mad:.1f}, time={batch_time:.1f}h")
+    
         if hasattr(self, 'MAX_SAMPLE') and self.MAX_SAMPLE is not None:
             if len(batched_total_counts) > self.MAX_SAMPLE:
                 print(f"Limiting to first {self.MAX_SAMPLE} batches (from {len(batched_total_counts)})")
                 batched_total_counts = batched_total_counts[:self.MAX_SAMPLE]
                 batched_std = batched_std[:self.MAX_SAMPLE]
                 batched_times_hours = batched_times_hours[:self.MAX_SAMPLE]
+                
+            
+        self.plot_density_vs_time(batched_total_counts, batched_times_hours)
         
-        # Convert manual times to hours since spawning
         manual_times_hours = []
         if len(manual_times) > 0:
-            # Check if manual_times contains datetime objects or numeric values
             if isinstance(manual_times[0], datetime):
-                # Convert datetime objects to hours since spawning
                 for dt in manual_times:
                     hours_since = (dt - nearest_day).total_seconds() / 3600
                     manual_times_hours.append(hours_since)
             else:
-                # Assume manual_times are already in decimal days or similar format
-                # Convert from decimal days to hours since spawning
                 for decimal_day in manual_times:
                     if isinstance(decimal_day, (int, float)):
-                        # Convert decimal days to hours (decimal_day * 24 hours)
-                        # Subtract the nearest_day decimal representation
-                        nearest_day_decimal = nearest_day.timestamp() / (24 * 3600 * 1000)  # Convert to decimal days
+                        nearest_day_decimal = nearest_day.timestamp() / (24 * 3600 * 1000)
                         hours_since = (decimal_day - nearest_day_decimal) * 24
                         manual_times_hours.append(hours_since)
                     else:
@@ -984,26 +991,21 @@ class TankCountPlotter:
         print(f"Converted {len(manual_times)} manual times to hours since spawning")
         if manual_times_hours:
             print(f"Manual time range: {min(manual_times_hours):.1f} to {max(manual_times_hours):.1f} hours")
-        
-        # Apply calibration if requested
+            
         scale_factor = 1.0
         if apply_calibration and len(batched_total_counts) > 0 and len(manual_counts) > calibration_idx:
-            scale_factor = self.surface_calibration(
-                batched_total_counts, batched_times_hours, 
-                manual_counts, manual_times_hours, calibration_idx
-            )
-        
-        # Apply scaling to counts and std
+            scale_factor = self.surface_calibration(batched_total_counts, batched_times_hours, 
+                                                    manual_counts, manual_times_hours, calibration_idx)
+            
         batched_total_counts_scaled = [count * scale_factor for count in batched_total_counts]
         batched_std_scaled = [std * scale_factor for std in batched_std]
         
-        # Create the plot with manual counts
         self.plot_surface_tank_estimate(
-            batched_times_hours, batched_total_counts_scaled, batched_std_scaled, 
-            manual_counts, manual_std, manual_times_hours, nearest_day,
-            class_names, damaged_class_idx, show_plots, scale_factor
-        )
-        
+                batched_times_hours, batched_total_counts_scaled, batched_std_scaled, 
+                manual_counts, manual_std, manual_times_hours, nearest_day,
+                class_names, damaged_class_idx, show_plots, scale_factor
+            )
+            
         print(f"Processed {len(surface_df)} surface detection data points into {len(batched_total_counts)} batches")
         if batched_times_hours:
             print(f"Batched time range: {min(batched_times_hours):.1f} to {max(batched_times_hours):.1f} hours since spawning")
@@ -1011,7 +1013,7 @@ class TankCountPlotter:
             print(f"Scaled count range: {min(batched_total_counts_scaled):.1f} to {max(batched_total_counts_scaled):.1f} detections")
         
         return batched_times_hours, batched_total_counts_scaled, scale_factor
-
+        
     def plot_surface_tank_estimate(self, 
                                    times_hours, 
                                    total_counts, 
@@ -1156,3 +1158,40 @@ class TankCountPlotter:
             plt.show()
         else:
             plt.close()
+            
+    def plot_density_vs_time(self, image_counts, image_times, fov_mm2=2.0, tank_diameter_m=1.0):
+        """
+        Plot coral density (corals per square meter) vs time.
+        Density is calculated as (image_counts / focus_volume) / tank_area.
+
+        Args:
+            image_counts (array-like): Array of coral counts per image batch.
+            image_times (array-like): Array of times (in decimal days) since spawning.
+            focus_volume_ml (float): Camera focus volume in mL (default 2.0 mL).
+            tank_diameter_m (float): Tank diameter in meters (default 1.0 m).
+        """
+        # Convert focus volume from mL to m^3
+        fov_m2 = fov_mm2 * 1e-6
+        # Calculate tank area (πr^2)
+        tank_radius_m = tank_diameter_m / 2
+        tank_area_m2 = np.pi * tank_radius_m ** 2
+
+        # Calculate density: (count / focus_volume) / tank_area
+        density_per_m2 = (np.array(image_counts) / fov_m2) / tank_area_m2
+
+        # Plot density vs time
+        plt.figure(figsize=(10, 6))
+        plt.plot(image_times, density_per_m2, marker='o', color='purple', label='Coral Density (per m²)')
+        plt.xlabel('Days since spawning')
+        plt.ylabel('Coral density (count/m²)')
+        plt.title(f'Coral Density vs Time\nTank: {self.tank_sheet_name}, {self.cslics_uuid}')
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+
+        # Save plot
+        output_path = os.path.join(self.save_det_dir, f'Density_vs_Time_{self.tank_sheet_name}_{self.cslics_uuid}.png')
+        plt.savefig(output_path, dpi=600)
+        print(f'Density vs Time plot saved to {output_path}')
+
+        plt.close()

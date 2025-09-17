@@ -259,8 +259,16 @@ class CoralSpawnPredictor:
 if __name__ == "__main__":
     
     # Default config file path if not specified
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_aant_cslics02.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231104_t3_aant_cslics02.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231104_t3_aant_cslics06.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231103_t4_aten_cslics01.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231103_t4_aten_cslics08.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231103_t4_aten_cslics09.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics02.json"
+    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics04.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics06.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231205_t4_alor_cslics08.json"
+    # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231205_t4_alor_cslics09.json"
 
     # Load and update config with command line arguments
     with open(config_file, 'r') as f:

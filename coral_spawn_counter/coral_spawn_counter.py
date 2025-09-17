@@ -221,19 +221,6 @@ class CoralSpawnCounter:
             
             class_counts = {}
             
-            # if detection_type == 'surface':
-            #     # Read YOLO format text data
-            #     if os.path.getsize(file_path) > 0:
-            #         with open(file_path, 'r') as f:
-            #             for line in f:
-            #                 parts = line.strip().split()
-            #                 if len(parts) >= 6:  # YOLO format: class_id x_center y_center width height confidence
-            #                     class_id = int(parts[0])
-            #                     confidence = float(parts[5])
-            #                     if confidence >= self.config.confidence_threshold:
-            #                         class_counts[class_id] = class_counts.get(class_id, 0) + 1
-            
-            # else:  # subsurface
             # Read JSON detection data
             if os.path.getsize(file_path) > 0:
                 with open(file_path, 'r') as f:
@@ -405,7 +392,7 @@ class CoralSpawnCounter:
         
         plot_filename = f'{detection_type}_detections_{self.config.tank_sheet_name}_{self.config.cslics_uuid}.png'
         plot_path = os.path.join(plots_dir, plot_filename)
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.savefig(plot_path, dpi=600, bbox_inches='tight')
         print(f"{detection_type.capitalize()} detection plot saved to: {plot_path}")
         
         if show_plots:
@@ -445,7 +432,7 @@ class CoralSpawnCounter:
 
     def process_subsurface_detections(self, show_plots=False):
         """
-        Process subsurface detections using the tank count plotter.
+        Process subsurface detections using the tank cousurface nt plotter.
         
         Args:
             show_plots: Whether to display plots interactively
@@ -557,7 +544,9 @@ class CoralSpawnCounter:
                     # Add submersion_time and surface calibration parameters to tank plotter
                     if hasattr(self.config, 'submersion_time'):
                         self.tank_plotter.submersion_time = self.config.submersion_time
-                    
+                        self.tank_plotter.submersion_time_decimal = self.manual_processor.convert_to_decimal_days(
+                            [pd.to_datetime(self.config.submersion_time, format="%Y-%m-%d_%H-%M-%S")], self.nearest_day)
+                        
                     # Set surface calibration parameters
                     self.tank_plotter.surface_calibration_idx = self.config_manager.get_surface_calibration_idx()
                     self.tank_plotter.surface_calibration_window_size = self.config_manager.get_surface_calibration_window_size()
@@ -881,38 +870,22 @@ class CoralSpawnCounter:
             traceback.print_exc()
             return None
 
-    def export_analysis_results(self, results, output_path=None, include_metadata=True):
-        """
-        Export analysis results to JSON file.
-        Convenience method to export results from run_full_analysis().
-        
-        Args:
-            results: Results dictionary from run_full_analysis()
-            output_path: Path to save JSON file. If None, uses default location.
-            include_metadata: Whether to include configuration metadata
-            
-        Returns:
-            str: Path to the saved JSON file
-        """
-        if not isinstance(results, dict):
-            print("Error: Results must be a dictionary from run_full_analysis()")
-            return None
-        
-        return self.export_counts_to_json(
-            manual_counts=results.get('manual_data'),
-            subsurface_counts=results.get('subsurface_results'),
-            surface_counts=results.get('surface_data'),
-            output_path=output_path,
-            include_metadata=include_metadata
-        )
-
 
 # Example usage and main execution
 if __name__ == "__main__":
     # Configuration file path
+    
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202311_t3_aant_cslics02.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202311_t3_aant_cslics06.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202311_t4_amag_cslics01.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202311_t4_amag_cslics08.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202311_t4_amag_cslics09.json"
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics02.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics04.json"
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics06.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics01.json"
     config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics08.json"
+    # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics09.json"
     
     try:
         # Initialize the coral spawn counter
