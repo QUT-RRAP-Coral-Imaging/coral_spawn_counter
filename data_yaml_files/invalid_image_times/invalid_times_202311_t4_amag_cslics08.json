@@ -1,0 +1,12 @@
+{
+    "tank_sheet_name": "NOV23 T4 Amag",
+    "cslics_uuid": "cslics01",
+    "invalid_ranges": [
+        {
+            "start": "cslics08_20231103_201833_548130_img.jpg",
+            "end": "cslics08_20231103_201844_278554_img.jpg"
+        }
+    ],
+    
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

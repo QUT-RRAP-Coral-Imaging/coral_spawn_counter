@@ -9,13 +9,13 @@
     "base_detection_dir": "/media/dtsai/CSLICSNov24/cslics_november_2024/detections",
     "save_manual_plot_dir": "/home/dtsai/Data/cslics_datasets/manual_counts/plots",
     "invalid_ranges_file": "/home/dtsai/Data/cslics_datasets/manual_counts/invalid_image_times/invalid_times_202411_t3_amil_10000000f620da42.json",
-    "skipping_frequency": 1,
+    "skipping_frequency": 2,
     "aggregate_size": 100,
-    "confidence_threshold": 0.5,
+    "confidence_threshold": 0.3,
     "MAX_SAMPLE": 1000,
     "calibration_window_size": 1,
-    "calibration_idx": 1,
-    "calibration_window_shift": 20,
+    "calibration_idx": 3,
+    "calibration_window_shift": 0,
     "PLOT_FOCUS_VOLUME": false,
-    "SHOW_INVALID_POINTS": false
+    "SHOW_INVALID_POINTS": true
 }

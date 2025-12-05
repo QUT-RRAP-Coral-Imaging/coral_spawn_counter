@@ -1,0 +1,45 @@
+# data config file that defines:
+# the dataset root directory "path"
+# the relative paths to train/val/test image directories (or text files with image paths)
+# a class "names" dictionary
+
+path: /home/dtsai/Data/cslics_datasets/
+train: 
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231102_aant_tank3_cslics06/split/images/train # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231103_aten_tank4_cslics08/split/images/train # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231204_alor_tank3_cslics06/split/images/train # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_october_subsurface_dataset/100000009c23b5af/split/images/train # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_split/train/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_pdae_438d_1_1000_split/train/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_sub2+3_split/train/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amil_nov_b5af_subfolder_1_2_3_split/train/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amag_oct_da42_subfolder_1_4_split/train/images
+  - 2023_2024_combined_dataset/cslics_2025_negative_images/train/images
+  - cslics_2025_nov/split/train/images
+
+val: 
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231102_aant_tank3_cslics06/split/images/val # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231103_aten_tank4_cslics08/split/images/val # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231204_alor_tank3_cslics06/split/images/val # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_october_subsurface_dataset/100000009c23b5af/split/images/val # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_split/valid/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_pdae_438d_1_1000_split/valid/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_sub2+3_split/valid/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amil_nov_b5af_subfolder_1_2_3_split/valid/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amag_oct_da42_subfolder_1_4_split/valid/images
+  - cslics_2025_nov/split/val/images
+
+test: 
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231102_aant_tank3_cslics06/split/images/test # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231103_aten_tank4_cslics08/split/images/test # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2023_subsurface_dataset/runs/20231204_alor_tank3_cslics06/split/images/test # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_october_subsurface_dataset/100000009c23b5af/split/images/test # training images relative to 'path'
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_split/test/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_pdae_438d_1_1000_split/test/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_maeq_a7ff_0_300_sub2+3_split/test/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amil_nov_b5af_subfolder_1_2_3_split/test/images
+  - 2023_2024_combined_dataset/cslics_2024_species_data/cslics_2024_amag_oct_da42_subfolder_1_4_split/test/images
+  - cslics_2025_nov/split/test/images
+# Classes
+names:
+  0: Coral
