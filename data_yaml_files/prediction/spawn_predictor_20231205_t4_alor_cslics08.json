@@ -1,0 +1,20 @@
+{
+  "img_dir": "/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/20231205_alor_tank4_cslics08/images",
+  "save_dir": "/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/20231205_alor_tank4_cslics08/detections",
+  "surface_weights_path": "/home/dtsai/Data/cslics_datasets/models/cslics_20230905_yolov8n_640p_amtenuis1000.pt",
+  "subsurface_weights_path": "/home/dtsai/Data/cslics_datasets/models/20240523_cslics_subsurface_640p_yolov8x.pt",
+  "cslics_uuid": "cslics08",
+  "submersion_time": "2023-12-08_19-33-00",
+  "processing_mode": "both",
+  "verbose": false,
+  "conf_thresh": 0.3,
+  "iou_thresh": 0.5,
+  "max_images": 200000,
+  "plot_only": false,
+  "parallel": true,
+  "save_txt": true,
+  "save_img": true,
+  "resume": false,
+  "resume_image_name": null,
+  "image_skip": 20
+}

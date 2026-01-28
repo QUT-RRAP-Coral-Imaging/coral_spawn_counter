@@ -1,0 +1,12 @@
+{
+    "tank_sheet_name": "DEC23 T3 Amag",
+    "cslics_uuid": "cslics06",
+    "invalid_ranges": [
+        {
+            "start": "cslics06_20231204_224512_193017_img.jpg",
+            "end": "cslics06_20231204_234012_896808_img.jpg"
+        }
+    ],
+    
+    "comments": "Images between each 'start' and 'end' (inclusive) are considered invalid. Any other images are valid."
+}

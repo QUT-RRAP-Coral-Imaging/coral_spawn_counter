@@ -1,0 +1,21 @@
+{
+    "manual_counts_file": "/home/dtsai/Data/cslics_datasets/manual_counts/cslics_2023_manual_counts.xlsx",
+    "spawning_sheet_name": "2023 dec",
+    "tank_sheet_name": "DEC23 T4 Alor",
+    "cslics_uuid": "cslics08",
+    "coral_species": "Acropora loripes",
+    "cslics_associations_file": "/home/dtsai/Data/cslics_datasets/manual_counts/cslics_2023_spawning_setup.xlsx",
+    "model_name": "cslics_subsurface_202508185_640p_yolov8n",
+    "base_detection_dir": "/media/dtsai/DT4TB/cslics_2023_datasets/2023_Dec_Spawning/detections",
+    "save_manual_plot_dir": "/home/dtsai/Data/cslics_datasets/manual_counts/plots",
+    "invalid_ranges_file": "/home/dtsai/Data/cslics_datasets/manual_counts/invalid_image_times/invalid_times_202312_t4_alor_cslics08.json",
+    "skipping_frequency": 1,
+    "aggregate_size": 100,
+    "confidence_threshold": 0.3,
+    "MAX_SAMPLE": 2000,
+    "calibration_window_size": 1,
+    "calibration_idx": 8,
+    "calibration_window_shift": 10,
+    "PLOT_FOCUS_VOLUME": false,
+    "SHOW_INVALID_POINTS": true
+}

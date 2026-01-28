@@ -6,7 +6,7 @@
     "coral_species": "Acropora maggie tenuis",
     "cslics_associations_file": "/home/dtsai/Data/cslics_datasets/manual_counts/cslics_2024_spawning_setup.xlsx",
     "model_name": "cslics_subsurface_20250205_640p_yolov8n",
-    "base_detection_dir": "/media/dtsai/CSLICSOct24/cslics_october_2024/detections",
+    "base_detection_dir": "/media/dtsai/CSLICSOct24/cslics_october_2024/2023_Dec_Spawning/detections",
     "save_manual_plot_dir": "/home/dtsai/Data/cslics_datasets/manual_counts/plots",
     "invalid_ranges_file": "/home/dtsai/Data/cslics_datasets/manual_counts/invalid_image_times/invalid_times_202410_t2_amag_100000009c23b5af.json",
     "skipping_frequency": 1,
