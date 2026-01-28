@@ -1,0 +1,32 @@
+# data config file that defines:
+# the dataset root directory "path"
+# the relative paths to train/val/test image directories (or text files with image paths)
+# a class "names" dictionary
+
+path: /home/dtsai/Data/cslics_desktop_datasets/
+train: 
+ - cslics_desktop_2024_October_maeq/split/train
+ - 2023_combined_embryogenesis/split/images/train # training images relative to 'path' 
+ - Negative_images/train
+ - 20241121_lobo/train
+ - 2025_cslics_desktop_2025110_2202_Amil/images/train
+ - 2025_cslics_desktop_2025110_2206_Gret/images/train
+ - 2025_cslics_desktop_2025110_aken_black/images/train
+val: 
+ - cslics_desktop_2024_October_maeq/split/val
+ - 2023_combined_embryogenesis/split/images/val # validation images relative to 'path'
+ - Negative_images/val
+ - 20241121_lobo/val
+test: 
+ - 2023_combined_embryogenesis/split/images/test # test images (optional)
+ - Negative_images/test
+ - cslics_desktop_2024_October_maeq/split/test
+ - 20241121_lobo/test
+# Classes
+names:
+  0: FourEightCell
+  1: FirstCleavage
+  2: TwoCell
+  3: Advanced
+  4: Damaged
+  5: Egg

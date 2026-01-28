@@ -1,0 +1,22 @@
+# data config file that defines:
+# the dataset root directory "path"
+# the relative paths to train/val/test image directories (or text files with image paths)
+# a class "names" dictionary
+
+path: /home/dtsai/Data/cslics_desktop_datasets/
+train: 
+ - 2023_combined_larvae/split/images/train
+ - 2025_cslics_desktop_whitsundays/split/train/images # training images relative to 'path' 
+ - 2025_cslics_desktop_larvae/split/train/images
+val: 
+ - 2023_combined_larvae/split/images/val
+ - 2025_cslics_desktop_whitsundays/split/val/images # validation images relative to 'path'
+ - 2025_cslics_desktop_larvae/split/val/images
+test: 
+ - 2023_combined_larvae/split/images/test # test images (optional)
+ - 2025_cslics_desktop_whitsundays/split/test/images
+ - 2025_cslics_desktop_larvae/split/test/images
+# Classes
+names:
+  0: Larvae
+
