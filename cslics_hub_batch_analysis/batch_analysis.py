@@ -17,7 +17,8 @@ from matplotlib.dates import HourLocator, DateFormatter
 
 # location of batch export directory 
 # data_dir = '/home/dtsai/Data/cslics_datasets/cslics_batch_export_2025/2025nov/lar12_1421024219729_aken_export_2025-11-22_16-00'
-data_dir = '/home/dtsai/Data/cslics_datasets/cslics_batch_export_2025/2025nov/lar11_1421124265569_aken_keppel_export_2025-11-22_16-00'
+# data_dir = '/home/dtsai/Data/cslics_datasets/cslics_batch_export_2025/2025nov/lar11_1421124265569_aken_keppel_export_2025-11-22_16-00'
+data_dir = '/home/dtsai/Data/cslics_datasets/cslics_batch_export_2025/2025dec/LAR13_export_2025-12-22_14-27'
 
 # data file:
 data_filename = 'sample_data.csv'
@@ -35,9 +36,16 @@ tank_est = data_cslics.iloc[:,5]
 # choose the range of data to plot and analyse
 # choose the range of data to plot and analyse
 # Set time limits for x-axis (modify these as needed)
-# times for LAR11 run
-time_min = '2025-11-21 13:00:00'  # Example start time
-time_max = '2025-11-22 18:00:00'  # Example end time
+
+# DEC2025
+# # times for LAR13
+time_min = '2025-12-09 20:15:00'
+time_max = '2025-12-20 19:25:00'
+
+# NOV2025
+# # times for LAR11 run
+# time_min = '2025-11-21 13:00:00'  # Example start time
+# time_max = '2025-11-22 18:00:00'  # Example end time
 
 # times for LAR12 run
 # time_min = '2025-11-19 19:00:00'  # Example start time
@@ -49,8 +57,9 @@ time_max_dt = pd.to_datetime(time_max)
 
 #######################
 # location of manual counts file
-manual_counts_file = 'CSLICS_harvesting_test(manual_counts_LAR11).csv'
+manual_counts_file = 'cslics_manual_counts_2025_dec(LAR13).csv'
 # manual_counts_file = 'CSLICS_harvesting_test(manual_counts_LAR12).csv'
+# manual_counts_file = 'CSLICS_harvesting_test(manual_counts_LAR11).csv'
 
 # read from manual counts file
 data_manual = pd.read_csv(os.path.join(data_dir, manual_counts_file))
@@ -61,8 +70,11 @@ std_dev_mc_counts = data_manual['count1']
 
 num_rows = data_manual.shape[0]
 std_dev_mc_counts = np.zeros(num_rows)
-for i in range(1,num_rows):
-    std_dev_mc_counts[i] = np.std(data_manual.iloc[i,4:9])
+import code
+code.interact(local=dict(globals(), **locals()))
+count_cols = [f'count{i}' for i in range(1, 7) if f'count{i}' in data_manual.columns]
+for i in range(0,num_rows):    
+    std_dev_mc_counts[i] = np.nanstd(data_manual.loc[i,count_cols].values)
 
 scale_std_dev = 1.0/50.0*1000.0*440.0  # scale to tank volume and from liters to milliliters
 std_dev_mc = std_dev_mc_counts * scale_std_dev
@@ -75,7 +87,7 @@ std_dev_mc = std_dev_mc_counts * scale_std_dev
 # print('last avg = ', last_avg)
 # scale_factor = tank_manual_counts.iloc[1] / last_avg
 # print('scale factor = ', scale_factor)
-scale_factor = 0.7
+scale_factor = 0.001
 tank_est_scaled = tank_est * scale_factor
 
 
@@ -103,7 +115,7 @@ plt.errorbar(time_manual_datetime[post_mask], tank_manual_counts[post_mask],
              label='Manual Count Error Bars (1 std) (post-harvest)')
 plt.xlabel('Time')
 plt.ylabel('Coral Count')
-plt.title('LAR 11 Tank Estimate vs Time During Simulated Harvest')
+plt.title(manual_counts_file + ' Tank Estimate vs Time During Harvest')
 plt.grid(True, alpha=0.3)
 
 plt.legend(loc='upper right', frameon=True, shadow=True, fontsize=10)
