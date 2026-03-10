@@ -1,0 +1,21 @@
+{
+    "manual_counts_file": "/home/java/Java/cslics/cslics_datasets/cslics_Dec_2023/detections/2023.12 C-SLIC culture density data sheet.xlsx",
+    "spawning_sheet_name": "2024 Dec",
+    "tank_sheet_name": "Dec24 T4 Alor",
+    "cslics_uuid": "01",
+    "coral_species": "Acropora maggie tenuis",
+    "cslics_associations_file": "/home/dtsai/Data/cslics_datasets/manual_counts/cslics_2024_spawning_setup.xlsx",
+    "model_name": "cslics_subsurface_20250205_640p_yolov8n",
+    "base_detection_dir": "/media/dtsai/CSLICSOct24/cslics_october_2024/detections",
+    "save_manual_plot_dir": "/home/dtsai/Data/cslics_datasets/manual_counts/plots",
+    "invalid_ranges_file": "/home/dtsai/Data/cslics_datasets/manual_counts/invalid_image_times/invalid_times_202410_t1_amag_100000000029da9b.json",
+    "skipping_frequency": 1,
+    "aggregate_size": 100,
+    "confidence_threshold": 0.5,
+    "MAX_SAMPLE": 1000,
+    "calibration_window_size": 1,
+    "calibration_idx": 2,
+    "calibration_window_shift": 10,
+    "PLOT_FOCUS_VOLUME": false,
+    "SHOW_INVALID_POINTS": true
+}

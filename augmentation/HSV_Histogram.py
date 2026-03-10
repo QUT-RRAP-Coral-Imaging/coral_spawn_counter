@@ -65,13 +65,36 @@ def save_data(data_dir, save_dir, max_images=10000000):
 
 if __name__ == '__main__':
     #data_dirs = '/media/java/CSLICSNov24/cslics_data/2024_november_spawning, /media/java/CSLICSOct24/cslics_october_2024/20241023_spawning'
-    data_dir = '/mnt/hpccs01/home/wardlewo/Data/100000009c23b5af/'
+    data_dir = '/Data/cslics/2025_dec_spawn/'
     #save_data(data_dir,'/mnt/hpccs01/home/wardlewo/Data/cslics/tank_data')
-    Tank_da42 = load_data(['/home/java/Java/hpc-home/Data/cslics/tank_data/10000000f620da42'])
-    Tank_438d = load_data(['/home/java/Java/hpc-home/Data/cslics/tank_data/100000001ab0438d'])
-    Tank_b5af = load_data(['/home/java/Java/hpc-home/Data/cslics/tank_data/100000009c23b5af'])
-    print("Loading data complete")
-    for tank_name, tank_data in [("Tank_da42", Tank_da42), ("Tank_438d", Tank_438d), ("Tank_b5af", Tank_b5af)]:
+    
+    # Load data from JSON cache directories (note: absolute paths)
+    print("Loading tank data from JSON cache...")
+    Tank_G_9711 = load_data(['/home/java/hpc-home/Data/cslics/2025_dec_spawn/hsv_cache/grey/1421024219711'])
+    print(f"  Tank_G_9711: {len(Tank_G_9711)} images")
+    Tank_G_1440 = load_data(['/home/java/hpc-home/Data/cslics/2025_dec_spawn/hsv_cache/grey/1421024251440'])
+    print(f"  Tank_G_1440: {len(Tank_G_1440)} images")
+    Tank_W_0172 = load_data(['/home/java/hpc-home/Data/cslics/2025_dec_spawn/hsv_cache/white/1421024220172'])
+    print(f"  Tank_W_0172: {len(Tank_W_0172)} images")
+    Tank_W_2929 = load_data(['/home/java/hpc-home/Data/cslics/2025_dec_spawn/hsv_cache/white/1422724372929'])
+    print(f"  Tank_W_2929: {len(Tank_W_2929)} images")
+    print("Loading data complete\n")
+    
+    # Check if data was loaded
+    if len(Tank_G_9711) == 0:
+        print("ERROR: No data found for Tank_G_9711")
+    if len(Tank_G_1440) == 0:
+        print("ERROR: No data found for Tank_G_1440")
+    if len(Tank_W_0172) == 0:
+        print("ERROR: No data found for Tank_W_0172")
+    if len(Tank_W_2929) == 0:
+        print("ERROR: No data found for Tank_W_2929")
+    
+    for tank_name, tank_data in [("Tank_G_9711", Tank_G_9711), ("Tank_G_1440", Tank_G_1440), ("Tank_W_0172", Tank_W_0172), ("Tank_W_2929", Tank_W_2929)]:
+        if len(tank_data) == 0:
+            print(f"Skipping {tank_name} - no data found")
+            continue
+            
         print(f"{tank_name} - Lowest Hue")
         print(min(tank_data, key=lambda x: tank_data[x][0]))
         print(f"{tank_name} - Highest Hue")
@@ -88,59 +111,69 @@ if __name__ == '__main__':
         print(max(tank_data, key=lambda x: tank_data[x][2]))
 
 
-    legend = ['Tank_3_da42_Amil', 'Tank_4_438d_Pdae', 'Tank_2_b5af_Amil']
-    ## Create separate histograms for hue, saturation, and value
-    # Plot for Hue Values
+    legend = ['Tank_G_9711', 'Tank_G_1440', 'Tank_W_0172', 'Tank_W_2929']
+    
+    ## Create separate figures for hue, saturation, and value
+    
+    # Figure 1: Hue Values
+    plt.figure(figsize=(12, 8))
     all_values = (
-    [value[0] for value in Tank_da42.values()] +
-    [value[0] for value in Tank_438d.values()] +
-    [value[0] for value in Tank_b5af.values()]
+        [value[0] for value in Tank_G_9711.values()] +
+        [value[0] for value in Tank_G_1440.values()] +
+        [value[0] for value in Tank_W_0172.values()] +
+        [value[0] for value in Tank_W_2929.values()]
     )
     bin_edges = np.histogram_bin_edges(all_values, bins=30)
-    plt.figure(figsize=(20, 10))
-    plt.subplot(1, 3, 1)
-    plt.hist([value[0] for value in Tank_da42.values()], bins=bin_edges, alpha=0.5, color='r')
-    plt.hist([value[0] for value in Tank_438d.values()], bins=bin_edges, alpha=0.5, color='b')
-    plt.hist([value[0] for value in Tank_b5af.values()], bins=bin_edges, alpha=0.5, color='g')
-    plt.xlabel('Hue Value')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of Hue Values')
-    plt.legend()
-    plt.subplot(1, 3, 2)
-    
-    all_values = (
-    [value[1] for value in Tank_da42.values()] +
-    [value[1] for value in Tank_438d.values()] +
-    [value[1] for value in Tank_b5af.values()]
-    )
-    bin_edges = np.histogram_bin_edges(all_values, bins=30)
-    plt.hist([value[1] for value in Tank_da42.values()], bins=bin_edges, alpha=0.5, color='r')
-    plt.hist([value[1] for value in Tank_438d.values()], bins=bin_edges, alpha=0.5, color='b')
-    plt.hist([value[1] for value in Tank_b5af.values()], bins=bin_edges, alpha=0.5, color='g')
-    plt.xlabel('Saturation Value')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of Saturation Values')
-    plt.legend()
-
-    plt.subplot(1, 3, 3)
-
-    all_values = (
-    [value[2] for value in Tank_da42.values()] +
-    [value[2] for value in Tank_438d.values()] +
-    [value[2] for value in Tank_b5af.values()]
-    )
-    bin_edges = np.histogram_bin_edges(all_values, bins=30)
-    plt.hist([value[2] for value in Tank_da42.values()], bins=bin_edges, alpha=0.5, color='r', label=legend[0])
-    plt.hist([value[2] for value in Tank_438d.values()], bins=bin_edges, alpha=0.5, color='b', label=legend[1])
-    plt.hist([value[2] for value in Tank_b5af.values()], bins=bin_edges, alpha=0.5, color='g', label=legend[2])    
-    plt.xlabel('Value')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of Value Values')
-    plt.legend()
-    #Place a legend to the right of this smaller subplot.
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    
-    
+    plt.hist([value[0] for value in Tank_G_9711.values()], bins=bin_edges, alpha=0.6, color='r', label=legend[0])
+    plt.hist([value[0] for value in Tank_G_1440.values()], bins=bin_edges, alpha=0.6, color='b', label=legend[1])
+    plt.hist([value[0] for value in Tank_W_0172.values()], bins=bin_edges, alpha=0.6, color='g', label=legend[2])
+    plt.hist([value[0] for value in Tank_W_2929.values()], bins=bin_edges, alpha=0.6, color='orange', label=legend[3])
+    plt.xlabel('Hue Value', fontsize=14)
+    plt.ylabel('Frequency', fontsize=14)
+    plt.title('Histogram of Hue Values - All Tanks', fontsize=16, fontweight='bold')
+    plt.legend(fontsize=12, loc='upper right')
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
+    
+    # Figure 2: Saturation Values
+    plt.figure(figsize=(12, 8))
+    all_values = (
+        [value[1] for value in Tank_G_9711.values()] +
+        [value[1] for value in Tank_G_1440.values()] +
+        [value[1] for value in Tank_W_0172.values()] +
+        [value[1] for value in Tank_W_2929.values()]
+    )
+    bin_edges = np.histogram_bin_edges(all_values, bins=30)
+    plt.hist([value[1] for value in Tank_G_9711.values()], bins=bin_edges, alpha=0.6, color='r', label=legend[0])
+    plt.hist([value[1] for value in Tank_G_1440.values()], bins=bin_edges, alpha=0.6, color='b', label=legend[1])
+    plt.hist([value[1] for value in Tank_W_0172.values()], bins=bin_edges, alpha=0.6, color='g', label=legend[2])
+    plt.hist([value[1] for value in Tank_W_2929.values()], bins=bin_edges, alpha=0.6, color='orange', label=legend[3])
+    plt.xlabel('Saturation Value', fontsize=14)
+    plt.ylabel('Frequency', fontsize=14)
+    plt.title('Histogram of Saturation Values - All Tanks', fontsize=16, fontweight='bold')
+    plt.legend(fontsize=12, loc='upper right')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    # Figure 3: Value Values
+    plt.figure(figsize=(12, 8))
+    all_values = (
+        [value[2] for value in Tank_G_9711.values()] +
+        [value[2] for value in Tank_G_1440.values()] +
+        [value[2] for value in Tank_W_0172.values()] +
+        [value[2] for value in Tank_W_2929.values()]
+    )
+    bin_edges = np.histogram_bin_edges(all_values, bins=30)
+    plt.hist([value[2] for value in Tank_G_9711.values()], bins=bin_edges, alpha=0.6, color='r', label=legend[0])
+    plt.hist([value[2] for value in Tank_G_1440.values()], bins=bin_edges, alpha=0.6, color='b', label=legend[1])
+    plt.hist([value[2] for value in Tank_W_0172.values()], bins=bin_edges, alpha=0.6, color='g', label=legend[2])
+    plt.hist([value[2] for value in Tank_W_2929.values()], bins=bin_edges, alpha=0.6, color='orange', label=legend[3])
+    plt.xlabel('Value', fontsize=14)
+    plt.ylabel('Frequency', fontsize=14)
+    plt.title('Histogram of Value Values - All Tanks', fontsize=16, fontweight='bold')
+    plt.legend(fontsize=12, loc='upper right')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
     plt.show()
 

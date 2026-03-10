@@ -1,0 +1,83 @@
+# Configuration for Confidence-Laplacian Correlation Analysis
+# This file contains the parameters for analyzing the relationship between
+# model confidence scores and Laplacian filter responses
+
+# Class information
+class:
+  name: "coral_spawn"
+  label: 0
+  color_bgr: [0, 255, 0]  # Green color for visualization
+
+# Model prediction parameters
+model:
+  confidence_threshold: 0.25  # Lower threshold to capture more detections
+  iou_threshold: 0.5
+  image_size: 640
+
+# Laplacian filter configuration
+laplacian:
+  do: true
+  denoise_template_window_size: 11
+  denoise_search_window_size: 31
+  denoise_strength: 5
+  min_area: 3000
+  max_area: 40000
+  min_circularity: 0.3
+  max_circularity: 1.0
+  kernel_size: 31
+  process_denoise: true
+  process_thresh: true
+  process_morph: true
+  process_fill: true
+  process_filter: true
+  laplacian_kernel_size: 5
+  laplacian_threshold: 25  # This is the threshold we're analyzing against
+  edge_dilation_kernel_size: 51
+
+# Additional filters (set to false for this analysis to focus on Laplacian)
+sift:
+  do: false
+
+hue:
+  do: false
+
+saturation:
+  do: false
+
+value:
+  do: false
+
+# Analysis parameters
+analysis:
+  max_images: 1000  # Maximum number of images to process
+  save_visualizations: true
+  save_intermediate_results: true  # Save results every 100 images
+  
+  # Laplacian metrics to calculate for each detection
+  metrics:
+    - mean_laplacian
+    - max_laplacian
+    - min_laplacian
+    - std_laplacian
+    - median_laplacian
+    - percentile_75
+    - percentile_90
+    - percentile_95
+    - above_threshold_ratio
+
+# Output configuration
+output:
+  save_csv: true
+  save_pickle: true
+  save_yaml_summary: true
+  save_plots: true
+  plot_dpi: 300
+  
+  # Files to generate
+  files:
+    raw_data: "confidence_laplacian_analysis.csv"
+    pickle_data: "confidence_laplacian_analysis.pkl"
+    summary: "analysis_summary.yaml"
+    correlations_plot: "correlation_heatmap.png"
+    confidence_dist: "confidence_distribution.png"
+    combined_plot: "top_correlations_combined.png"
