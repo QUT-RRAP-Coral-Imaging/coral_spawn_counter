@@ -169,8 +169,17 @@ class BatchAnalyzer:
         df = pd.read_csv(sample_data_file)
         
         # Extract sample times and tank estimates
-        t_sample = pd.to_datetime(df["timestamp"])
+        df['timestamp'] = pd.to_datetime(df["timestamp"])
+        t_sample = df["timestamp"]
         tank_est = df["Coral (Tank ~)"]
+
+        # do a running average, since we care more about long-term trends, rather than instantaneous fluctuations
+        # the imaging rate was all over the place for November, but we want ~ 1 hr
+        df = df.set_index('timestamp').sort_index()
+        df["tank_est_rolling"] = df['Coral (Tank ~)'].rolling(window=10, min_periods=1).mean()
+
+        # extract coral image counts, and scale them to some calibration (eg. in Nov, runs not scaled properly)
+        # TODO
         
         # Get manual counts for this tank
         tank_manual = self.process_tank(tank_name)
@@ -182,9 +191,12 @@ class BatchAnalyzer:
         fig, ax = plt.subplots(figsize=(12, 7))
         
         # Plot CSLICS estimates
-        ax.plot(t_sample, tank_est, marker='.', linestyle='-', 
+        ax.plot(t_sample, tank_est, marker=None, linestyle='-', 
                 color=colors[0], label='CSLICS Estimates', 
-                alpha=0.8, linewidth=2, markersize=6)
+                alpha=0.8, linewidth=1)
+        ax.plot(t_sample, df["tank_est_rolling"], marker=None, linestyle='-',
+                color=colors[1], label='CSLICS Estimate Mean',
+                alpha=1.0, linewidth=1)
         
         # Overlay manual counts if available
         if not tank_manual.empty:
