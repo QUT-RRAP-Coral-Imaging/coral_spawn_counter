@@ -113,7 +113,12 @@ class CoralSpawnPredictor:
         
         # Gather images
         start_time = time.time()
-        img_list = sorted(Path(self.config.img_dir).rglob('cslics*_img.jpg'))
+        # Search for both naming patterns
+        from itertools import chain
+        img_list = sorted(chain(
+            Path(self.config.img_dir).rglob('cslics*_img.jpg'),
+            Path(self.config.img_dir).rglob('*_clean.jpg')
+        ))
         print(f'Image list gathered in {time.time() - start_time:.2f} seconds')
         
         # Apply max_images limit if specified
@@ -265,7 +270,7 @@ if __name__ == "__main__":
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231103_t4_aten_cslics08.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231103_t4_aten_cslics09.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics02.json"
-    config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics04.json"
+    config_file = "Corals/cslic/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20251227_aken_LAR01.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231204_t3_alor_cslics06.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231205_t4_alor_cslics08.json"
     # config_file = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/prediction/spawn_predictor_20231205_t4_alor_cslics09.json"

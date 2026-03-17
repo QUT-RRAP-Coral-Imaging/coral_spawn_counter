@@ -69,7 +69,6 @@ class ConfigManager:
     
         # Parse submersion time once
         self.submersion_datetime = datetime.strptime(self.submersion_time, "%Y-%m-%d_%H-%M-%S")
-        
         # Get current time once
         self.current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 

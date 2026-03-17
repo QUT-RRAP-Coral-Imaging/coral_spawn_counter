@@ -1,0 +1,20 @@
+{
+  "img_dir": "Data/cslics/2025_dec_spawn/1422724372929/2929_Testset/4_hour",
+  "save_dir": "Data/cslics/2025_dec_spawn/test_data/4_hour_predictions/Dec/1422724372929/20251204_cslics_subsurface_yolov8m_tests",
+  "surface_weights_path": "models/cslics_subsurface_20250205_640p_yolov8n.pt",
+  "subsurface_weights_path": "models/cslics_subsurface_20250205_640p_yolov8n.pt",
+  "cslics_uuid": "1422724372929",
+  "submersion_time": "2025-12-17_06-00-01",
+  "processing_mode": "both",
+  "verbose": false,
+  "conf_thresh": 0.3,
+  "iou_thresh": 0.5,
+  "max_images": 200000,
+  "plot_only": false,
+  "parallel": true,
+  "save_txt": true,
+  "save_img": true,
+  "resume": false,
+  "resume_image_name": null,
+  "image_skip": 1
+}

@@ -884,7 +884,7 @@ if __name__ == "__main__":
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics04.json"
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t3_alor_cslics06.json"
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics01.json"
-    config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics08.json"
+    config_path = "Corals/cslic/coral_spawn_counter/data_yaml_files/plotting/plot_config_20251227_aken_LAR01.json"
     # config_path = "/home/dtsai/Code/cslics/coral_spawn_counter/data_yaml_files/plotting/plot_config_202312_t4_alor_cslics09.json"
     
     try:

@@ -335,24 +335,22 @@ class BatchProcessor:
     
     def _update_batch_detection_tracking(self, img_path, pred_count, batch_detections):
         """Update batch detection tracking dictionary."""
-        filename = Path(img_path).stem
-        try:
-            timestamp_str = filename[9:-11]  # Assumes consistent filename format
-            timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-            
-            # Collect detections for batch update
-            iso_timestamp = timestamp.isoformat()
-            if iso_timestamp in batch_detections:
-                batch_detections[iso_timestamp]["count"] += pred_count
-                batch_detections[iso_timestamp]["files"] += 1
-            else:
-                batch_detections[iso_timestamp] = {
-                    "count": pred_count, 
-                    "files": 1
-                }
-        except (ValueError, IndexError):
+        # Extract timestamp from filename using the utility function
+        timestamp = self.time_utils.extract_timestamp_from_filename(img_path)
+        if timestamp is None:
             # If timestamp parsing fails, just skip tracking this for plotting
-            pass
+            return
+        
+        # Collect detections for batch update
+        iso_timestamp = timestamp.isoformat()
+        if iso_timestamp in batch_detections:
+            batch_detections[iso_timestamp]["count"] += pred_count
+            batch_detections[iso_timestamp]["files"] += 1
+        else:
+            batch_detections[iso_timestamp] = {
+                "count": pred_count, 
+                "files": 1
+            }
     
     def _save_outputs(self, predictions, img_path, imgsave_dir, txtsave_dir, 
                      model_path, classes, class_colours):

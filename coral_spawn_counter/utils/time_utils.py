@@ -1,4 +1,5 @@
 # utils/time_utils.py
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +10,35 @@ class TimeUtils:
     def __init__(self, submersion_datetime):
         self.submersion_datetime = submersion_datetime
         self._timestamp_cache = {}
+
+    def _parse_datetime_from_stem(self, filename_stem):
+        """Parse datetime from different known filename formats."""
+        candidates = []
+
+        # Legacy format slice used in historical datasets
+        if len(filename_stem) > 20:
+            candidates.append((filename_stem[9:-11], "%Y%m%d_%H%M%S"))
+
+        # 2025+ format e.g. 2025-12-17_07-20-42+475141_clean
+        candidates.append((filename_stem.split('+')[0], "%Y-%m-%d_%H-%M-%S"))
+
+        # Regex fallback for compact timestamp format
+        compact_match = re.search(r"(\d{8}_\d{6})", filename_stem)
+        if compact_match:
+            candidates.append((compact_match.group(1), "%Y%m%d_%H%M%S"))
+
+        # Regex fallback for dashed timestamp format
+        dashed_match = re.search(r"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})", filename_stem)
+        if dashed_match:
+            candidates.append((dashed_match.group(1), "%Y-%m-%d_%H-%M-%S"))
+
+        for timestamp_str, date_format in candidates:
+            try:
+                return datetime.strptime(timestamp_str, date_format)
+            except (ValueError, TypeError):
+                continue
+
+        return None
     
     def is_surface_image(self, img_path):
         """
@@ -25,17 +55,17 @@ class TimeUtils:
             
         # Extract datetime from filename
         filename = Path(img_path).stem
-        try:
-            timestamp_str = filename[9:-11]  # Assumes consistent filename format
-            image_datetime = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-            result = image_datetime < self.submersion_datetime
-            self._timestamp_cache[img_path] = result
-            return result
-        except (ValueError, IndexError):
+        image_datetime = self._parse_datetime_from_stem(filename)
+
+        if image_datetime is None:
             # If datetime parsing fails, assume it's a surface image
             print(f"Warning: Could not parse datetime from filename: {filename}")
             self._timestamp_cache[img_path] = True
             return True
+
+        result = image_datetime < self.submersion_datetime
+        self._timestamp_cache[img_path] = result
+        return result
     
     def convert_to_decimal_days(self, dates_list, time_zero=None):
         """
@@ -70,8 +100,4 @@ class TimeUtils:
             datetime or None: Extracted timestamp or None if parsing fails
         """
         filename = Path(img_path).stem
-        try:
-            timestamp_str = filename[9:-11]
-            return datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-        except (ValueError, IndexError):
-            return None
+        return self._parse_datetime_from_stem(filename)
