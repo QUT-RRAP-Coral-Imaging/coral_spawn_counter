@@ -42,6 +42,12 @@ def parse_args():
         help="Optional confidence threshold for JSON detections (default: 0.0).",
     )
     parser.add_argument(
+        "--scale-factor",
+        type=float,
+        default=1,
+        help="Scale factor applied to detection counts before plotting (default: 1.0).",
+    )
+    parser.add_argument(
         "--timestamp-source",
         choices=["filename", "json", "auto"],
         default="filename",
@@ -87,7 +93,7 @@ def parse_timestamp_from_name(name_stem):
     return None
 
 
-def parse_json_label(file_path, confidence_threshold=0.7, timestamp_source="filename"):
+def parse_json_label(file_path, confidence_threshold=0, timestamp_source="filename"):
     with open(file_path, "r") as file_handle:
         payload = json.load(file_handle)
 
@@ -168,6 +174,16 @@ def build_temporal_series(df, rolling_window):
     df = df.copy()
     df["hours_since_start"] = (df["timestamp"] - first_time).dt.total_seconds() / 3600.0
     df["rolling_avg"] = df["count"].rolling(window=rolling_window, min_periods=1).mean()
+    return df
+
+
+def apply_scale_factor(df, scale_factor):
+    """Apply multiplicative scale factor to detection counts."""
+    if df.empty or scale_factor == 1.0:
+        return df
+
+    df = df.copy()
+    df["count"] = df["count"] * scale_factor
     return df
 
 
@@ -328,7 +344,7 @@ def main():
     df, total_files, skipped_files = read_labels(
         labels_dir=labels_dir,
         pattern=args.pattern,
-        confidence_threshold=0.7,
+        confidence_threshold=0.3,
         timestamp_source=args.timestamp_source,
     )
 
@@ -336,6 +352,7 @@ def main():
         print(f"No parseable label data found. Files scanned: {total_files}, skipped: {skipped_files}")
         return
 
+    df = apply_scale_factor(df, args.scale_factor)
     df = build_temporal_series(df, args.rolling_window)
 
     divider_hours = args.divider_hours
@@ -359,6 +376,7 @@ def main():
     print(f"Parsed points: {len(df)}")
     print(f"Skipped files: {skipped_files}")
     print(f"Timestamp source: {args.timestamp_source}")
+    print(f"Scale factor: {args.scale_factor}")
     print(f"Rolling window: {args.rolling_window}")
     if divider_hours is not None:
         print(f"Divider line (hours since first image): {divider_hours:.4f}")
