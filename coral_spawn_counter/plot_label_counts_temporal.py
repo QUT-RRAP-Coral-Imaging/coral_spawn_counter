@@ -76,7 +76,7 @@ def parse_args():
     )
     parser.add_argument(
         "--title",
-        default="Dec, Lar01, Aken: Lights off to Lights on coral counts",
+        default="Dec, Lar14, Aken: Lights off to Lights on coral counts",
         help="Plot title.",
     )
     return parser.parse_args()
@@ -344,7 +344,7 @@ def main():
     df, total_files, skipped_files = read_labels(
         labels_dir=labels_dir,
         pattern=args.pattern,
-        confidence_threshold=0.3,
+        confidence_threshold=args.confidence_threshold,
         timestamp_source=args.timestamp_source,
     )
 

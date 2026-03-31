@@ -1,8 +1,8 @@
 {
   "img_dir": "Data/cslics/2025_dec_spawn/1422724372929/2929_Testset/4_hour",
-  "save_dir": "Data/cslics/2025_dec_spawn",
-  "surface_weights_path": "cslics_detection/20260324_cslics_subsurface_combined_640p_yolov8n8/weights/best.pt",
-  "subsurface_weights_path": "cslics_detection/20260324_cslics_subsurface_combined_640p_yolov8n8/weights/best.pt",
+  "save_dir": "Data/cslics/2025_dec_spawn/test_data/4_hour_predictions/Dec/multi_model_run/20260324_cslics_subsurface_combined_640p_yolov8n_new_augments",
+  "surface_weights_path": "models/20260324_cslics_subsurface_combined_640p_yolov8n_new_augments.pt",
+  "subsurface_weights_path": "models/20260324_cslics_subsurface_combined_640p_yolov8n_new_augments.pt",
   "cslics_uuid": "1422724372929",
   "submersion_time": "2025-12-17_06-00-01",
   "processing_mode": "both",
